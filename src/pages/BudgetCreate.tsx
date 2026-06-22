@@ -6,7 +6,7 @@ import { Layout } from '../components/Layout';
 import { calculateBudget, formatCurrency, generateId, getSettings, supabase } from '../lib/supabase';
 import type { Budget, BudgetItem, Deliverables, PriceListItem, ProductionSetup, ProjectType, Template } from '../types';
 
-const steps = ['Client', 'Project', 'Production Setup', 'Services Selection', 'Deliverables', 'Financial Summary', 'Proposal Generation'];
+const steps = ['Client', 'Project', 'Production', 'Services', 'Deliverables', 'Financial', 'Proposal'];
 const projectTypes: ProjectType[] = ['Institucional', 'Evento', 'Publicidade', 'Podcast', 'Reels', 'Cobertura', 'Personalizado'];
 const categories = ['Pré Produção', 'Produção', 'Fotografia', 'Pós Produção', 'Finalização', 'Logística', 'Equipamentos', 'Extras'];
 
@@ -162,23 +162,25 @@ export function BudgetCreate() {
     <Layout>
       <div className="mx-auto max-w-6xl space-y-8">
         <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-6 border-b border-white/10 pb-8 lg:flex-row lg:items-end lg:justify-between">
-          <div>
+          <div className="min-w-0">
             <p className="mb-3 text-xs uppercase tracking-[0.34em] text-accent">SIM Budget System</p>
-            <h1 className="font-display text-4xl font-semibold tracking-tight text-white md:text-5xl">Novo orçamento</h1>
+            <h1 className="truncate font-display text-3xl font-semibold tracking-tight text-white md:text-4xl">Novo orçamento</h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-white/45">Um fluxo guiado para transformar briefing, produção e investimento em uma proposta premium.</p>
           </div>
-          <div className="rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-xs text-white/45">Fee {settings.fee_percentage}% / Tax {settings.tax_percentage}% / validade {settings.proposal_validity_days} dias</div>
+          <div className="shrink-0 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-xs text-white/45">
+            Fee {settings.fee_percentage}% / Tax {settings.tax_percentage}% / {settings.proposal_validity_days} dias
+          </div>
         </motion.div>
 
-        <div className="grid gap-8 lg:grid-cols-[260px_1fr]">
+        <div className="grid gap-8 lg:grid-cols-[220px_1fr]">
           <aside className="space-y-2 lg:sticky lg:top-8 lg:h-fit">
             {steps.map((label, index) => {
               const number = index + 1;
               const active = number === step;
               return (
                 <button key={label} onClick={() => setStep(number)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${active ? 'bg-white text-black' : number < step ? 'bg-white/10 text-white' : 'text-white/35 hover:bg-white/5 hover:text-white/70'}`}>
-                  <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs ${active ? 'bg-black text-white' : 'bg-white/10 text-white/70'}`}>{number < step ? <Check size={14} /> : number}</span>
-                  <span className="text-sm font-medium">{label}</span>
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs">{active ? <span className="flex h-full w-full items-center justify-center rounded-full bg-black text-white">{number < step ? <Check size={14} /> : number}</span> : <span className="flex h-full w-full items-center justify-center rounded-full bg-white/10 text-white/70">{number < step ? <Check size={14} /> : number}</span>}</span>
+                  <span className="truncate text-sm font-medium">{label}</span>
                 </button>
               );
             })}
@@ -197,18 +199,18 @@ export function BudgetCreate() {
                 <Input label="Project Name" value={project.name} onChange={(value) => setProject({ ...project, name: value })} placeholder="Nome da campanha ou produção" wide />
                 <div className="sm:col-span-2">
                   <Label>Project Type</Label>
-                  <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-                    {projectTypes.map((type) => <button key={type} onClick={() => setProject({ ...project, type })} className={`rounded-xl border px-4 py-3 text-left text-sm transition ${project.type === type ? 'border-white bg-white text-black' : 'border-white/10 bg-white/[0.03] text-white/55 hover:border-white/25 hover:text-white'}`}>{type}</button>)}
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                    {projectTypes.map((type) => <button key={type} onClick={() => setProject({ ...project, type })} className={`truncate rounded-xl border px-3 py-3 text-left text-sm transition ${project.type === type ? 'border-white bg-white text-black' : 'border-white/10 bg-white/[0.03] text-white/55 hover:border-white/25 hover:text-white'}`}>{type}</button>)}
                   </div>
                 </div>
                 <div className="sm:col-span-2">
                   <Label>Project Description</Label>
-                  <textarea value={project.description} onChange={(e) => setProject({ ...project, description: e.target.value })} rows={5} className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white transition focus:border-white/35" placeholder="Contexto, objetivo, estética, referências e observações de escopo." />
+                  <textarea value={project.description} onChange={(e) => setProject({ ...project, description: e.target.value })} rows={5} className="w-full resize-none rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white transition focus:border-white/35" placeholder="Contexto, objetivo, estética, referências e observações de escopo." />
                 </div>
                 <div className="sm:col-span-2 border-t border-white/10 pt-5">
                   <Label>Templates</Label>
                   <div className="grid gap-3 md:grid-cols-3">
-                    {templates.map((template) => <button key={template.id} onClick={() => applyTemplate(template)} className="group rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left transition hover:border-white/25 hover:bg-white/[0.06]"><Copy size={15} className="mb-4 text-white/35 group-hover:text-white" /><p className="text-sm font-medium text-white">{template.name}</p><p className="mt-1 line-clamp-2 text-xs leading-5 text-white/35">{template.description}</p></button>)}
+                    {templates.map((template) => <button key={template.id} onClick={() => applyTemplate(template)} className="group flex flex-col rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left transition hover:border-white/25 hover:bg-white/[0.06]"><Copy size={15} className="mb-3 text-white/35 group-hover:text-white" /><p className="truncate text-sm font-medium text-white">{template.name}</p><p className="mt-1 line-clamp-2 flex-1 text-xs leading-5 text-white/35">{template.description}</p></button>)}
                   </div>
                 </div>
               </StepPanel>}
@@ -227,7 +229,21 @@ export function BudgetCreate() {
                     if (!categoryItems.length) return null;
                     return <section key={category}><h3 className="mb-3 text-xs uppercase tracking-[0.28em] text-white/30">{category}</h3><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{categoryItems.map((price) => <ServiceCard key={price.id} price={price} selected={items.some((item) => item.price_list_id === price.id)} onClick={() => addService(price)} />)}</div></section>;
                   })}
-                  {items.length > 0 && <div className="rounded-3xl border border-white/10 bg-black/30 p-5"><h3 className="mb-4 text-sm font-medium text-white">Selected Services</h3><div className="space-y-3">{items.map((item) => <div key={item.id} className="grid gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3 md:grid-cols-[1fr_90px_130px_130px_40px] md:items-center"><div><p className="text-sm font-medium text-white">{item.name}</p><p className="text-xs text-white/35">{item.category}</p></div><Stepper value={item.quantity} onChange={(value) => updateItem(item.id, { quantity: value })} /><MoneyInput label="Sale" value={item.sale_price} onChange={(value) => updateItem(item.id, { sale_price: value, custom_pricing: true })} /><MoneyInput label="Cost" value={item.cost_price} onChange={(value) => updateItem(item.id, { cost_price: value, custom_pricing: true })} /><button onClick={() => setItems(items.filter((selected) => selected.id !== item.id))} className="rounded-xl p-2 text-white/30 hover:bg-white/10 hover:text-white"><Minus size={16} /></button></div>)}</div></div>}
+                  {items.length > 0 && <div className="rounded-3xl border border-white/10 bg-black/30 p-5">
+                    <h3 className="mb-4 text-sm font-medium text-white">Selected Services ({items.length})</h3>
+                    <div className="space-y-3">
+                      {items.map((item) => <div key={item.id} className="grid gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3 md:grid-cols-[1fr_80px_120px_120px_40px] md:items-center">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-white">{item.name}</p>
+                          <p className="truncate text-xs text-white/35">{item.category}</p>
+                        </div>
+                        <Stepper value={item.quantity} onChange={(value) => updateItem(item.id, { quantity: value })} />
+                        <MoneyInput label="Sale" value={item.sale_price} onChange={(value) => updateItem(item.id, { sale_price: value, custom_pricing: true })} />
+                        <MoneyInput label="Cost" value={item.cost_price} onChange={(value) => updateItem(item.id, { cost_price: value, custom_pricing: true })} />
+                        <button onClick={() => setItems(items.filter((selected) => selected.id !== item.id))} className="rounded-xl p-2 text-white/30 hover:bg-white/10 hover:text-white"><Minus size={16} /></button>
+                      </div>)}
+                    </div>
+                  </div>}
                 </div>
               </StepPanel>}
 
@@ -241,7 +257,7 @@ export function BudgetCreate() {
                 <Toggle label="Videocase" checked={deliverables.videocase} onChange={(value) => setDeliverables({ ...deliverables, videocase: value })} />
               </StepPanel>}
 
-              {step === 6 && <StepPanel key="financial" title="Financial Summary" subtitle="Resumo interno com custos, imposto, fee e margem. Nunca entra na proposta do cliente.">
+              {step === 6 && <StepPanel key="financial" title="Financial Summary" subtitle="Resumo interno com custos, imposto, fee e margem.">
                 <Summary financials={financials} />
                 <div className="sm:col-span-2 rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/45"><SlidersHorizontal size={18} className="mb-3 text-accent" />Material Bruto, quando selecionado, é calculado automaticamente como 20% do preço final do projeto.</div>
               </StepPanel>}
@@ -266,14 +282,14 @@ export function BudgetCreate() {
 }
 
 function StepPanel({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
-  return <motion.section initial={{ opacity: 0, x: 24, filter: 'blur(8px)' }} animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }} exit={{ opacity: 0, x: -24, filter: 'blur(8px)' }} transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }} className="rounded-[2rem] border border-white/10 bg-gradient-to-b from-white/[0.06] to-white/[0.02] p-6 shadow-2xl shadow-black/30 md:p-8"><div className="mb-8"><p className="mb-2 text-xs uppercase tracking-[0.3em] text-accent">{title}</p><h2 className="font-display text-3xl text-white">{subtitle}</h2></div><div className="grid gap-5 sm:grid-cols-2">{children}</div></motion.section>;
+  return <motion.section initial={{ opacity: 0, x: 24, filter: 'blur(8px)' }} animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }} exit={{ opacity: 0, x: -24, filter: 'blur(8px)' }} transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }} className="rounded-[2rem] border border-white/10 bg-gradient-to-b from-white/[0.06] to-white/[0.02] p-6 shadow-2xl shadow-black/30 md:p-8"><div className="mb-8"><p className="mb-2 text-xs uppercase tracking-[0.3em] text-accent">{title}</p><h2 className="line-clamp-2 font-display text-2xl text-white md:text-3xl">{subtitle}</h2></div><div className="grid gap-5 sm:grid-cols-2">{children}</div></motion.section>;
 }
 
 function Label({ children }: { children: React.ReactNode }) { return <label className="mb-2 block text-xs uppercase tracking-[0.22em] text-white/35">{children}</label>; }
 function Input({ label, value, onChange, placeholder, type = 'text', wide }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; type?: string; wide?: boolean }) { return <div className={wide ? 'sm:col-span-2' : ''}><Label>{label}</Label><input type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white transition focus:border-white/35" /></div>; }
 function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) { return <button onClick={() => onChange(!checked)} className={`rounded-2xl border p-5 text-left transition ${checked ? 'border-white bg-white text-black' : 'border-white/10 bg-white/[0.03] text-white/55 hover:border-white/25'}`}><span className="text-sm font-medium">{label}</span><span className="mt-3 block text-xs opacity-55">{checked ? 'Enabled' : 'Disabled'}</span></button>; }
-function ServiceCard({ price, selected, onClick }: { price: PriceListItem; selected: boolean; onClick: () => void }) { return <button onClick={onClick} className={`group rounded-2xl border p-4 text-left transition ${selected ? 'border-white bg-white text-black' : 'border-white/10 bg-white/[0.03] text-white hover:border-white/25 hover:bg-white/[0.06]'}`}><div className="mb-6 flex items-start justify-between"><p className="text-sm font-medium">{price.name}</p><Plus size={16} className={selected ? 'text-black' : 'text-white/30 group-hover:text-white'} /></div><div className="flex justify-between text-xs opacity-60"><span>{formatCurrency(price.sale_price)}</span><span>cost {formatCurrency(price.cost_price)}</span></div></button>; }
+function ServiceCard({ price, selected, onClick }: { price: PriceListItem; selected: boolean; onClick: () => void }) { return <button onClick={onClick} className={`group flex flex-col rounded-2xl border p-4 text-left transition ${selected ? 'border-white bg-white text-black' : 'border-white/10 bg-white/[0.03] text-white hover:border-white/25 hover:bg-white/[0.06]'}`}><div className="mb-4 flex items-start justify-between"><p className="min-w-0 flex-1 truncate text-sm font-medium">{price.name}</p><Plus size={16} className={`shrink-0 ml-2 ${selected ? 'text-black' : 'text-white/30 group-hover:text-white'}`} /></div><div className="flex justify-between text-xs opacity-60"><span>{formatCurrency(price.sale_price)}</span><span>cost {formatCurrency(price.cost_price)}</span></div></button>; }
 function Stepper({ value, onChange }: { value: number; onChange: (value: number) => void }) { return <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/30 px-2 py-2"><button onClick={() => onChange(Math.max(1, value - 1))} className="text-white/40 hover:text-white"><Minus size={14} /></button><span className="text-sm text-white">{value}</span><button onClick={() => onChange(value + 1)} className="text-white/40 hover:text-white"><Plus size={14} /></button></div>; }
 function MoneyInput({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) { return <label className="block"><span className="mb-1 block text-[10px] uppercase tracking-wider text-white/25">{label}</span><input type="number" value={Math.round(value)} onChange={(e) => onChange(Number(e.target.value))} className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-white/35" /></label>; }
-function Summary({ financials }: { financials: ReturnType<typeof calculateBudget> }) { const rows = [['Total Cost', financials.cost_total], ['Fee', financials.fee_value], ['Tax', financials.tax_value], ['Profit', financials.profit]]; return <div className="sm:col-span-2 rounded-3xl border border-white/10 bg-black/30 p-6"><div className="grid gap-4 md:grid-cols-2">{rows.map(([label, value]) => <div key={String(label)}><p className="text-xs uppercase tracking-[0.22em] text-white/30">{label}</p><p className="mt-2 font-display text-2xl text-white">{formatCurrency(Number(value))}</p></div>)}<div><p className="text-xs uppercase tracking-[0.22em] text-white/30">Margin</p><p className="mt-2 font-display text-2xl text-white">{(financials.margin * 100).toFixed(1)}%</p></div><div><p className="text-xs uppercase tracking-[0.22em] text-accent">Final Price</p><p className="mt-2 font-display text-4xl text-white">{formatCurrency(financials.final_price)}</p></div></div></div>; }
+function Summary({ financials }: { financials: ReturnType<typeof calculateBudget> }) { const rows = [['Total Cost', financials.cost_total], ['Fee', financials.fee_value], ['Tax', financials.tax_value], ['Profit', financials.profit]]; return <div className="sm:col-span-2 rounded-3xl border border-white/10 bg-black/30 p-6"><div className="grid gap-4 md:grid-cols-2">{rows.map(([label, value]) => <div key={String(label)}><p className="text-xs uppercase tracking-[0.22em] text-white/30">{label}</p><p className="mt-2 truncate font-display text-2xl text-white md:text-3xl">{formatCurrency(Number(value))}</p></div>)}<div><p className="text-xs uppercase tracking-[0.22em] text-white/30">Margin</p><p className="mt-2 font-display text-2xl text-white md:text-3xl">{(financials.margin * 100).toFixed(1)}%</p></div><div><p className="text-xs uppercase tracking-[0.22em] text-accent">Final Price</p><p className="mt-2 truncate font-display text-3xl text-white md:text-4xl">{formatCurrency(financials.final_price)}</p></div></div></div>; }
 function Action({ label, icon: Icon, onClick, primary }: { label: string; icon: React.ElementType; onClick: () => void; primary?: boolean }) { return <button onClick={onClick} className={`flex items-center gap-3 rounded-2xl border p-5 text-left transition ${primary ? 'border-white bg-white text-black' : 'border-white/10 bg-white/[0.03] text-white hover:border-white/25'}`}><Icon size={18} /><span className="text-sm font-medium">{label}</span></button>; }

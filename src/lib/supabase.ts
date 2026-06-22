@@ -22,6 +22,11 @@ const STORAGE_KEYS: Record<TableName | 'auth', string> = {
   auth: 'sim_auth',
 };
 
+export function getStoredAuthUser(): User | null {
+  const auth = getStorage<{ session: boolean; user: User } | null>(STORAGE_KEYS.auth, null);
+  return auth?.session ? auth.user : null;
+}
+
 export function getStorage<T>(key: string, defaultValue: T): T {
   try {
     const data = localStorage.getItem(key);
@@ -310,7 +315,6 @@ seed();
 export const supabase = {
   auth: {
     signInWithPassword: async ({ email, password }: { email: string; password: string }) => {
-      await new Promise((resolve) => setTimeout(resolve, 700));
       if (email === 'jay@admin.com.br' && password === 'JayAdmin01') {
         const user: User = { id: 'user-1', email };
         setStorage(STORAGE_KEYS.auth, { session: true, user });

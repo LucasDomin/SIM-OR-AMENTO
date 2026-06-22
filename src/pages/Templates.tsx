@@ -51,29 +51,28 @@ export function Templates() {
   return (
     <Layout>
       <div className="space-y-8">
-        {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
+          className="min-w-0"
         >
-          <h1 className="text-3xl font-display font-semibold text-white tracking-tight">
+          <h1 className="truncate text-3xl font-display font-semibold tracking-tight text-white">
             Templates
           </h1>
-          <p className="text-white/40 mt-1 text-sm">
+          <p className="mt-1 text-sm text-white/40">
             Modelos pré-configurados para acelerar a criação de orçamentos
           </p>
         </motion.div>
 
-        {/* Templates Grid */}
         {loading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div key={i} className="h-48 bg-sim-surface rounded-xl animate-pulse" />
+              <div key={i} className="h-48 animate-pulse rounded-xl bg-sim-surface" />
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {templates.map((template, index) => {
               const Icon = iconMap[template.id] || Layers;
               const totalValue = template.price_item_names?.reduce((sum, name) => {
@@ -87,28 +86,28 @@ export function Templates() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.1 * index, duration: 0.5 }}
-                  className="group bg-sim-surface border border-sim-border rounded-xl p-6 hover:border-white/15 transition-all duration-300"
+                  className="group flex flex-col rounded-xl border border-sim-border bg-sim-surface p-6 transition-all duration-300 hover:border-white/15"
                 >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="p-3 rounded-xl bg-white/5 group-hover:bg-white/10 transition-colors">
+                  <div className="mb-4 flex items-start justify-between">
+                    <div className="rounded-xl bg-white/5 p-3 transition-colors group-hover:bg-white/10">
                       <Icon size={22} className="text-white/60" />
                     </div>
-                    <span className="text-[10px] font-medium text-white/20 uppercase tracking-wider px-2 py-1 rounded bg-white/5">
+                    <span className="rounded bg-white/5 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-white/20">
                       {template.project_type || template.type}
                     </span>
                   </div>
 
-                  <h3 className="text-lg font-display font-semibold text-white mb-2">
+                  <h3 className="mb-2 line-clamp-1 text-lg font-display font-semibold text-white">
                     {template.name}
                   </h3>
-                  <p className="text-sm text-white/40 mb-4 line-clamp-2">
+                  <p className="mb-4 line-clamp-2 flex-1 text-sm text-white/40">
                     {template.description}
                   </p>
 
-                  <div className="flex items-center justify-between pt-4 border-t border-white/5">
-                    <div>
-                      <p className="text-xs text-white/30">{template.price_item_names?.length || template.items?.length || 0} itens</p>
-                      <p className="text-sm font-medium text-white">
+                  <div className="flex items-center justify-between border-t border-white/5 pt-4">
+                    <div className="min-w-0">
+                      <p className="truncate text-xs text-white/30">{template.price_item_names?.length || template.items?.length || 0} itens</p>
+                      <p className="truncate text-sm font-medium text-white">
                         {new Intl.NumberFormat('pt-BR', {
                           style: 'currency',
                           currency: 'BRL',
@@ -117,7 +116,7 @@ export function Templates() {
                     </div>
                     <button
                       onClick={() => useTemplate(template)}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white text-white hover:text-sim-black text-sm font-medium transition-all duration-200"
+                      className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-white/5 px-4 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-white hover:text-sim-black"
                     >
                       <Play size={14} />
                       Usar

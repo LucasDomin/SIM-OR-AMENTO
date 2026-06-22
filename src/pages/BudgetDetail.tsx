@@ -2,8 +2,6 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { CheckCircle2, ChevronLeft, Copy, Download, FileText, Link2, Send, XCircle } from 'lucide-react';
-import jsPDF from 'jspdf';
-import { Document, HeadingLevel, Packer, Paragraph, TextRun } from 'docx';
 import { BudgetStatusBadge } from '../components/BudgetStatusBadge';
 import { Layout } from '../components/Layout';
 import { formatCurrency, supabase } from '../lib/supabase';
@@ -45,8 +43,10 @@ export function BudgetDetail() {
     alert('Link da proposta copiado.');
   }
 
-  function generatePDF(clientOnly = true) {
+  async function generatePDF(clientOnly = true) {
     if (!budget) return;
+    const jspdfUrl = 'https://esm.sh/jspdf@3.0.3';
+    const { default: jsPDF } = await import(/* @vite-ignore */ jspdfUrl);
     const doc = new jsPDF();
     const margin = 24;
     const width = doc.internal.pageSize.getWidth();
@@ -121,6 +121,8 @@ export function BudgetDetail() {
 
   async function generateDOCX() {
     if (!budget) return;
+    const docxUrl = 'https://esm.sh/docx@9.5.1';
+    const { Document, HeadingLevel, Packer, Paragraph, TextRun } = await import(/* @vite-ignore */ docxUrl);
     const doc = new Document({ sections: [{ children: [
       new Paragraph({ text: 'SIM', heading: HeadingLevel.TITLE }),
       new Paragraph({ text: 'Proposta Comercial', heading: HeadingLevel.HEADING_1 }),
@@ -151,9 +153,24 @@ export function BudgetDetail() {
     <Layout>
       <div className="mx-auto max-w-6xl space-y-8">
         <button onClick={() => navigate('/budgets')} className="inline-flex items-center gap-2 text-sm text-white/40 hover:text-white"><ChevronLeft size={16} />Voltar</button>
+
         <motion.header initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-5 border-b border-white/10 pb-8 lg:flex-row lg:items-end lg:justify-between">
-          <div><p className="mb-3 text-xs uppercase tracking-[0.34em] text-accent">Budget ID {budget.id.slice(0, 8)}</p><div className="flex flex-wrap items-center gap-3"><h1 className="font-display text-4xl text-white md:text-5xl">{budget.project_name}</h1><BudgetStatusBadge status={budget.status} /></div><p className="mt-3 text-sm text-white/45">{budget.client_name} / {budget.project_type} / expira em {formatDate(budget.expires_at)}</p></div>
-          <div className="flex flex-wrap gap-2">{budget.status === 'Draft' && <Button onClick={() => updateStatus('Sent')} icon={Send}>Enviar</Button>}{budget.status === 'Sent' && <><Button onClick={() => updateStatus('Approved')} icon={CheckCircle2}>Aprovar</Button><Button onClick={() => updateStatus('Rejected')} icon={XCircle}>Rejeitar</Button></>}<Button onClick={duplicateBudget} icon={Copy}>Duplicar</Button></div>
+          <div className="min-w-0">
+            <p className="mb-3 truncate text-xs uppercase tracking-[0.34em] text-accent">Budget ID {budget.id.slice(0, 8)}</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="line-clamp-2 break-words font-display text-3xl leading-tight text-white md:text-4xl">{budget.project_name}</h1>
+              <BudgetStatusBadge status={budget.status} />
+            </div>
+            <p className="mt-3 truncate text-sm text-white/45">{budget.client_name} / {budget.project_type} / expira em {formatDate(budget.expires_at)}</p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            {budget.status === 'Draft' && <Button onClick={() => updateStatus('Sent')} icon={Send}>Enviar</Button>}
+            {budget.status === 'Sent' && <>
+              <Button onClick={() => updateStatus('Approved')} icon={CheckCircle2}>Aprovar</Button>
+              <Button onClick={() => updateStatus('Rejected')} icon={XCircle}>Rejeitar</Button>
+            </>}
+            <Button onClick={duplicateBudget} icon={Copy}>Duplicar</Button>
+          </div>
         </motion.header>
 
         <div className="grid gap-5 md:grid-cols-4">
@@ -166,19 +183,38 @@ export function BudgetDetail() {
         <section className="grid gap-5 lg:grid-cols-[1fr_360px]">
           <div className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-6">
             <h2 className="mb-5 font-display text-2xl text-white">Scope</h2>
-            <p className="text-sm leading-6 text-white/50">{budget.project_description || 'Produção audiovisual conforme briefing aprovado.'}</p>
-            <div className="mt-6 grid gap-3 md:grid-cols-2">{deliverableLines(budget).map((line) => <div key={line} className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-white/60">{line}</div>)}</div>
+            <p className="line-clamp-6 text-sm leading-6 text-white/50">{budget.project_description || 'Produção audiovisual conforme briefing aprovado.'}</p>
+            <div className="mt-6 grid gap-3 md:grid-cols-2">
+              {deliverableLines(budget).map((line) => <div key={line} className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-white/60">{line}</div>)}
+            </div>
           </div>
           <div className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-6">
             <h2 className="mb-5 font-display text-2xl text-white">Proposal</h2>
-            <div className="space-y-3"><Button onClick={() => generatePDF(true)} icon={FileText} block>PDF Cliente</Button><Button onClick={() => generatePDF(false)} icon={Download} block>PDF Interno</Button><Button onClick={generateDOCX} icon={Download} block>DOCX Cliente</Button><Button onClick={copyLink} icon={Link2} block>Copiar link online</Button></div>
-            <p className="mt-5 break-all rounded-2xl bg-black/30 p-3 text-xs leading-5 text-white/35">{proposalUrl()}</p>
+            <div className="space-y-3">
+              <Button onClick={() => generatePDF(true)} icon={FileText} block>PDF Cliente</Button>
+              <Button onClick={() => generatePDF(false)} icon={Download} block>PDF Interno</Button>
+              <Button onClick={generateDOCX} icon={Download} block>DOCX Cliente</Button>
+              <Button onClick={copyLink} icon={Link2} block>Copiar link online</Button>
+            </div>
+            <p className="mt-5 break-all rounded-2xl bg-black/30 p-3 text-xs leading-5 text-white/35" title={proposalUrl()}>
+              {proposalUrl().length > 80 ? proposalUrl().slice(0, 77) + '...' : proposalUrl()}
+            </p>
           </div>
         </section>
 
         <section className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-6">
           <h2 className="mb-5 font-display text-2xl text-white">Internal Items</h2>
-          <div className="space-y-2">{budget.items.map((item) => <div key={item.id} className="grid gap-3 rounded-2xl border border-white/10 bg-black/30 p-4 text-sm md:grid-cols-[1fr_80px_120px_120px]"><div><p className="text-white">{item.name}</p><p className="text-xs text-white/35">{item.category}</p></div><p className="text-white/55">x{item.quantity}</p><p className="text-white/55">Sale {formatCurrency(item.sale_price)}</p><p className="text-white/55">Cost {formatCurrency(item.cost_price)}</p></div>)}</div>
+          <div className="space-y-2">
+            {budget.items.map((item) => <div key={item.id} className="grid gap-3 rounded-2xl border border-white/10 bg-black/30 p-4 text-sm md:grid-cols-[1fr_70px_110px_110px]">
+              <div className="min-w-0">
+                <p className="truncate text-white">{item.name}</p>
+                <p className="truncate text-xs text-white/35">{item.category}</p>
+              </div>
+              <p className="shrink-0 text-white/55">x{item.quantity}</p>
+              <p className="shrink-0 text-white/55" title={`Sale ${formatCurrency(item.sale_price)}`}>Sale {formatCurrency(item.sale_price)}</p>
+              <p className="shrink-0 text-white/55" title={`Cost ${formatCurrency(item.cost_price)}`}>Cost {formatCurrency(item.cost_price)}</p>
+            </div>)}
+          </div>
         </section>
       </div>
     </Layout>
@@ -199,5 +235,13 @@ function deliverableLines(budget: Budget) {
   ].filter(Boolean);
 }
 
-function Metric({ label, value, strong }: { label: string; value: string; strong?: boolean }) { return <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5"><p className="text-xs uppercase tracking-[0.24em] text-white/30">{label}</p><p className={`mt-3 font-display ${strong ? 'text-3xl text-white' : 'text-2xl text-white/80'}`}>{value}</p></div>; }
-function Button({ children, onClick, icon: Icon, block }: { children: React.ReactNode; onClick: () => void; icon: React.ElementType; block?: boolean }) { return <button onClick={onClick} className={`inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/70 transition hover:border-white/25 hover:bg-white hover:text-black ${block ? 'w-full justify-center' : ''}`}><Icon size={16} />{children}</button>; }
+function Metric({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+  return <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+    <p className="text-xs uppercase tracking-[0.24em] text-white/30">{label}</p>
+    <p className={`mt-3 truncate font-display ${strong ? 'text-2xl text-white md:text-3xl' : 'text-xl text-white/80 md:text-2xl'}`}>{value}</p>
+  </div>;
+}
+
+function Button({ children, onClick, icon: Icon, block }: { children: React.ReactNode; onClick: () => void; icon: React.ElementType; block?: boolean }) {
+  return <button onClick={onClick} className={`inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/70 transition hover:border-white/25 hover:bg-white hover:text-black ${block ? 'w-full justify-center' : ''}`}><Icon size={16} />{children}</button>;
+}

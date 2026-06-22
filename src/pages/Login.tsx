@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, ArrowRight } from 'lucide-react';
 import { Logo } from '../components/Logo';
 import { useAuth } from '../contexts/AuthContext';
 
 export function Login() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState('jay@admin.com.br');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -19,8 +21,10 @@ export function Login() {
     const { error } = await signIn(email, password);
     if (error) {
       setError(error);
+      setLoading(false);
+      return;
     }
-    setLoading(false);
+    navigate('/', { replace: true });
   };
 
   return (
@@ -31,9 +35,11 @@ export function Login() {
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
         className="w-full max-w-sm"
       >
-        <div className="flex flex-col items-center mb-12">
-          <Logo className="h-14 w-auto text-white" animated />
-          <p className="mt-4 text-[10px] uppercase tracking-[0.34em] text-white/35">Still In Movement · Budget System</p>
+        <div className="mb-12 flex flex-col items-center">
+          <div className="w-full max-w-[220px] overflow-hidden">
+            <Logo className="h-12 w-full text-white" animated />
+          </div>
+          <p className="mt-4 text-center text-[10px] uppercase tracking-[0.34em] text-white/35">Still In Movement · Budget System</p>
         </div>
 
         <motion.div
