@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
+  --color-noir-950: #060606;
+  --color-noir-900: #0a0a0a;
+  --color-noir-850: #0f0f10;
+  --color-noir-800: #131315;
+  --color-noir-700: #1c1c1f;
+  --color-noir-600: #26262a;
+  --color-cream: #f4f1ec;
+  --color-accent: #d4c5a9;
+  --color-accent-warm: #c9a875;
+  --color-sim-black: #0a0a0a;
+  --color-sim-dark: #111111;
+  --color-sim-surface: #161616;
+  --color-sim-elevated: #1c1c1c;
+  --color-sim-border: #262626;
+  --color-sim-muted: #404040;
+  --color-sim-text: #e5e5e5;
+  --color-sim-text-secondary: #a3a3a3;
+  --color-sim-text-tertiary: #737373;
+  --color-sim-white: #fafafa;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: #060606;
+  color: #e5e5e5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background-color: #d4c5a9;
+  color: #060606;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 80;
+  opacity: 0.035;
+  background-image: radial-gradient(circle at 25% 20%, rgba(255,255,255,0.8) 0 1px, transparent 1px), radial-gradient(circle at 75% 80%, rgba(255,255,255,0.45) 0 1px, transparent 1px);
+  background-size: 18px 18px, 23px 23px;
+  mix-blend-mode: overlay;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slow-pan {
+  from { transform: translate3d(-2%, -1%, 0) scale(1.02); }
+  to { transform: translate3d(2%, 1%, 0) scale(1.08); }
+}
+
+.cinema-glow {
+  background:
+    radial-gradient(circle at 20% 10%, rgba(212, 197, 169, 0.12), transparent 30%),
+    radial-gradient(circle at 80% 0%, rgba(255, 255, 255, 0.07), transparent 28%),
+    linear-gradient(180deg, #0f0f10 0%, #060606 100%);
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out forwards;
+}
+
+input, textarea, select {
+  outline: none;
+}
+
+input::placeholder, textarea::placeholder {
+  color: #525252;
+}
+
+@media print {
+  body {
+    background: white !important;
+  }
+  aside, nav, button, .no-print {
+    display: none !important;
+  }
+  main {
+    margin-left: 0 !important;
+  }
+}
