@@ -1,363 +1,113 @@
 @import "tailwindcss";
 
-/* ============================================================
-   SIM — Still In Movement · Design System
-   "Still In Movement": the still frame that holds motion inside.
-   ============================================================ */
-
 @theme {
-  /* Noir — the shadows where cinema lives */
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
   --color-noir-950: #060606;
   --color-noir-900: #0a0a0a;
   --color-noir-850: #0f0f10;
   --color-noir-800: #131315;
   --color-noir-700: #1c1c1f;
   --color-noir-600: #26262a;
-  --color-noir-500: #3a3a40;
-  --color-noir-400: #6b6b72;
-  --color-noir-300: #9a9aa1;
-  --color-noir-200: #c8c8cc;
-  --color-noir-100: #e8e8ea;
-  --color-noir-50: #f5f5f6;
-
-  /* Cream + warm accent — the light catching the frame */
   --color-cream: #f4f1ec;
   --color-accent: #d4c5a9;
   --color-accent-warm: #c9a875;
-
-  /* Spectrum — the logo bar, used sparingly as energy */
-  --color-spec-1: #996ea7;
-  --color-spec-2: #e45a58;
-  --color-spec-3: #ea8d11;
-  --color-spec-4: #fac421;
-  --color-spec-5: #33ae74;
-  --color-spec-6: #2894d1;
-  --color-spec-7: #b1b7b1;
-  --color-spec-8: #f4c78d;
-
-  --font-display: "Fraunces", "Times New Roman", serif;
-  --font-sans: "Inter", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
-}
-
-:root {
-  color-scheme: dark;
-  font-synthesis: none;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-}
-
-html,
-body,
-#root {
-  background: #060606;
-  color: #e8e8ea;
-  font-family: "Inter", system-ui, sans-serif;
-  min-height: 100%;
-  margin: 0;
-}
-
-body {
-  overflow-x: hidden;
-}
-
-/* ---- Custom scrollbar ---- */
-::-webkit-scrollbar {
-  width: 9px;
-  height: 9px;
-}
-::-webkit-scrollbar-track {
-  background: #0a0a0a;
-}
-::-webkit-scrollbar-thumb {
-  background: #1c1c1f;
-  border-radius: 999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #3a3a40;
-}
-
-/* ---- Selection ---- */
-::selection {
-  background: #d4c5a9;
-  color: #0a0a0a;
-}
-
-/* ============================================================
-   Grain — the emulsion texture
-   ============================================================ */
-.grain::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 120;
-  opacity: 0.05;
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
-}
-
-/* ============================================================
-   Motion library — every animation embodies "still → movement"
-   ============================================================ */
-
-/* Slow Ken Burns: a still image that begins to breathe */
-@keyframes slow-zoom {
-  from {
-    transform: scale(1.02);
-  }
-  to {
-    transform: scale(1.16);
-  }
-}
-.animate-slow-zoom {
-  animation: slow-zoom 18s ease-out forwards;
-}
-.animate-slow-zoom-loop {
-  animation: slow-zoom 22s ease-in-out infinite alternate;
-}
-
-/* Cinematic fade-up with motion-blur resolve */
-@keyframes fade-up {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
-    filter: blur(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-    filter: blur(0);
-  }
-}
-.fade-up {
-  animation: fade-up 1.1s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-.fade-in {
-  animation: fade-in 1.4s ease both;
-}
-
-/* Reveal on scroll — stillness resolving into motion as it enters frame */
-.reveal {
-  opacity: 0;
-  transform: translateY(46px);
-  transition: opacity 1.2s cubic-bezier(0.16, 1, 0.3, 1),
-    transform 1.2s cubic-bezier(0.16, 1, 0.3, 1), filter 1.2s ease;
-  filter: blur(8px);
-  will-change: opacity, transform, filter;
-}
-.reveal.in {
-  opacity: 1;
-  transform: translateY(0);
-  filter: blur(0);
-}
-
-/* Aperture spin */
-@keyframes aperture {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-.animate-aperture {
-  animation: aperture 26s linear infinite;
-}
-.animate-aperture-rev {
-  animation: aperture 34s linear infinite reverse;
-}
-
-/* Subtle glow pulse */
-@keyframes glow {
-  0%,
-  100% {
-    opacity: 0.3;
-  }
-  50% {
-    opacity: 0.85;
-  }
-}
-.animate-glow {
-  animation: glow 3.4s ease-in-out infinite;
-}
-
-/* Marquees */
-@keyframes marquee {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-50%);
-  }
-}
-.animate-marquee {
-  animation: marquee 38s linear infinite;
-}
-.animate-marquee-slow {
-  animation: marquee 70s linear infinite;
-}
-
-/* Spectrum sweep — the logo bar travelling */
-@keyframes spec-sweep {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(200%);
-  }
-}
-.animate-spec-sweep {
-  animation: spec-sweep 2.4s cubic-bezier(0.7, 0, 0.3, 1) forwards;
-}
-
-/* Blinking record dot */
-@keyframes blink {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.15;
-  }
-}
-.animate-blink {
-  animation: blink 1.3s steps(1, end) infinite;
-}
-
-/* Vertical drift for scroll cue */
-@keyframes drift {
-  0% {
-    transform: translateY(0);
-    opacity: 0;
-  }
-  30% {
-    opacity: 1;
-  }
-  100% {
-    transform: translateY(14px);
-    opacity: 0;
-  }
-}
-.animate-drift {
-  animation: drift 2.2s cubic-bezier(0.16, 1, 0.3, 1) infinite;
-}
-
-/* ============================================================
-   Helpers
-   ============================================================ */
-.mask-fade-x {
-  -webkit-mask-image: linear-gradient(
-    to right,
-    transparent,
-    #000 10%,
-    #000 90%,
-    transparent
-  );
-  mask-image: linear-gradient(
-    to right,
-    transparent,
-    #000 10%,
-    #000 90%,
-    transparent
-  );
-}
-.mask-fade-b {
-  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent);
-  mask-image: linear-gradient(to bottom, #000 55%, transparent);
-}
-
-.glass {
-  background: rgba(10, 10, 11, 0.6);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-}
-.glass-light {
-  background: rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-}
-
-/* Film perforations — sprocket strip */
-.sprockets {
-  background-image: radial-gradient(
-    circle,
-    #060606 38%,
-    transparent 40%
-  );
-  background-size: 26px 26px;
-  background-repeat: repeat-x;
-  background-position: center;
-}
-
-.text-balance {
-  text-wrap: balance;
-}
-.text-pretty {
-  text-wrap: pretty;
-}
-
-/* Hide native number input arrows */
-input[type="number"]::-webkit-outer-spin-button,
-input[type="number"]::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-input[type="number"] {
-  -moz-appearance: textfield;
+  --color-sim-black: #0a0a0a;
+  --color-sim-dark: #111111;
+  --color-sim-surface: #161616;
+  --color-sim-elevated: #1c1c1c;
+  --color-sim-border: #262626;
+  --color-sim-muted: #404040;
+  --color-sim-text: #e5e5e5;
+  --color-sim-text-secondary: #a3a3a3;
+  --color-sim-text-tertiary: #737373;
+  --color-sim-white: #fafafa;
 }
 
 html {
   scroll-behavior: smooth;
 }
 
-/* Focus ring */
-button:focus-visible,
-a:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible {
-  outline: 1px solid rgba(212, 197, 169, 0.6);
-  outline-offset: 2px;
-  border-radius: 4px;
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: #060606;
+  color: #e5e5e5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Display type ramp helpers */
-.font-display {
-  font-family: var(--font-display);
-  font-feature-settings: "ss01";
-}
-.tracking-mega {
-  letter-spacing: 0.38em;
-}
-.tracking-wide2 {
-  letter-spacing: 0.18em;
+::selection {
+  background-color: #d4c5a9;
+  color: #060606;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 80;
+  opacity: 0.035;
+  background-image: radial-gradient(circle at 25% 20%, rgba(255,255,255,0.8) 0 1px, transparent 1px), radial-gradient(circle at 75% 80%, rgba(255,255,255,0.45) 0 1px, transparent 1px);
+  background-size: 18px 18px, 23px 23px;
+  mix-blend-mode: overlay;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slow-pan {
+  from { transform: translate3d(-2%, -1%, 0) scale(1.02); }
+  to { transform: translate3d(2%, 1%, 0) scale(1.08); }
+}
+
+.cinema-glow {
+  background:
+    radial-gradient(circle at 20% 10%, rgba(212, 197, 169, 0.12), transparent 30%),
+    radial-gradient(circle at 80% 0%, rgba(255, 255, 255, 0.07), transparent 28%),
+    linear-gradient(180deg, #0f0f10 0%, #060606 100%);
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out forwards;
+}
+
+input, textarea, select {
+  outline: none;
+}
+
+input::placeholder, textarea::placeholder {
+  color: #525252;
+}
+
+@media print {
+  body {
+    background: white !important;
   }
-  .reveal {
-    opacity: 1;
-    transform: none;
-    filter: none;
+  aside, nav, button, .no-print {
+    display: none !important;
+  }
+  main {
+    margin-left: 0 !important;
   }
 }

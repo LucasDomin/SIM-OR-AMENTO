@@ -1,83 +1,72 @@
-import { useEffect, useState } from "react";
-import { Loader } from "./components/Loader";
-import { Navbar } from "./components/Navbar";
-import { Hero } from "./components/Hero";
-import { ParallaxMarquee } from "./components/ParallaxMarquee";
-import { Manifesto } from "./components/Manifesto";
-import { SelectedWorks } from "./components/SelectedWorks";
-import { Capabilities } from "./components/Capabilities";
-import { Recognition } from "./components/Recognition";
-import { Why } from "./components/Why";
-import { Contact } from "./components/Contact";
-import { CaseStudy } from "./components/CaseStudy";
-import { AIAgent } from "./components/AIAgent";
-import { AdminAccessModal } from "./components/AdminAccessModal";
-import { AdminProvider } from "./contexts/AdminContext";
-import { projects } from "./data/projects";
+import { Suspense, lazy } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 
-function ScrollProgress() {
-  const [p, setP] = useState(0);
-  useEffect(() => {
-    const onScroll = () => {
-      const h = document.documentElement;
-      const max = h.scrollHeight - h.clientHeight;
-      setP(max > 0 ? h.scrollTop / max : 0);
-    };
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
+const Login = lazy(() => import('./pages/Login').then((module) => ({ default: module.Login })));
+const Dashboard = lazy(() => import('./pages/Dashboard').then((module) => ({ default: module.Dashboard })));
+const Budgets = lazy(() => import('./pages/Budgets').then((module) => ({ default: module.Budgets })));
+const BudgetCreate = lazy(() => import('./pages/BudgetCreate').then((module) => ({ default: module.BudgetCreate })));
+const BudgetDetail = lazy(() => import('./pages/BudgetDetail').then((module) => ({ default: module.BudgetDetail })));
+const Templates = lazy(() => import('./pages/Templates').then((module) => ({ default: module.Templates })));
+const PriceList = lazy(() => import('./pages/PriceList').then((module) => ({ default: module.PriceList })));
+const ProposalPublic = lazy(() => import('./pages/ProposalPublic').then((module) => ({ default: module.ProposalPublic })));
+
+function ScreenLoader() {
   return (
-    <div className="fixed inset-x-0 top-0 z-[110] h-[2px] bg-transparent">
-      <div
-        className="h-full bg-gradient-to-r from-spec-1 via-accent to-spec-6"
-        style={{ width: `${p * 100}%` }}
-      />
+    <div className="flex min-h-screen items-center justify-center bg-sim-black">
+      <div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-white animate-spin" />
     </div>
   );
 }
 
-export default function App() {
-  const [loading, setLoading] = useState(true);
-  const [slug, setSlug] = useState<string | null>(null);
-  const [admin, setAdmin] = useState(false);
+function PrivateRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
 
-  const active = projects.find((p) => p.slug === slug) ?? null;
+  if (loading) {
+    return <ScreenLoader />;
+  }
 
-  // lock scroll during loader
-  useEffect(() => {
-    document.body.style.overflow = loading ? "hidden" : "";
-    if (!loading) window.scrollTo(0, 0);
-  }, [loading]);
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
 
+  return <>{children}</>;
+}
+
+function PublicRoute({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+
+  if (user) {
+    return <Navigate to="/" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+function AppRoutes() {
   return (
-    <AdminProvider>
-      <div className="grain relative min-h-screen bg-noir-950 text-noir-100">
-        {loading && <Loader onDone={() => setLoading(false)} />}
-
-        <ScrollProgress />
-        <Navbar onAdmin={() => setAdmin(true)} />
-
-        <main>
-          <Hero onEnter={() => scrollToId("works")} />
-          <ParallaxMarquee text="Still In Movement" />
-          <Manifesto />
-          <SelectedWorks onOpen={setSlug} />
-          <Capabilities />
-          <Why />
-          <Recognition />
-          <ParallaxMarquee text="A resposta continua sendo SIM" />
-          <Contact onAdmin={() => setAdmin(true)} />
-        </main>
-
-        <CaseStudy project={active} onClose={() => setSlug(null)} />
-        <AIAgent />
-        <AdminAccessModal open={admin} onClose={() => setAdmin(false)} />
-      </div>
-    </AdminProvider>
+    <Suspense fallback={<ScreenLoader />}>
+      <Routes>
+        <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+        <Route path="/proposal/:slug" element={<ProposalPublic />} />
+        <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+        <Route path="/budgets" element={<PrivateRoute><Budgets /></PrivateRoute>} />
+        <Route path="/budgets/new" element={<PrivateRoute><BudgetCreate /></PrivateRoute>} />
+        <Route path="/budgets/:id" element={<PrivateRoute><BudgetDetail /></PrivateRoute>} />
+        <Route path="/templates" element={<PrivateRoute><Templates /></PrivateRoute>} />
+        <Route path="/price-list" element={<PrivateRoute><PriceList /></PrivateRoute>} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   );
 }
 
-function scrollToId(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
+    </BrowserRouter>
+  );
 }
