@@ -68,8 +68,8 @@ export function BudgetDetail() {
 
     // Header
     if (logoImg) {
-      doc.addImage(logoImg, 'PNG', margin, y, 50, 16);
-      y += 20;
+      doc.addImage(logoImg, 'PNG', margin, y, 120, 34);
+      y += 40;
     } else {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(28);
