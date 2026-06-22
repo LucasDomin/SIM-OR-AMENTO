@@ -68,22 +68,14 @@ export function BudgetDetail() {
 
     // Header
     if (logoImg) {
-      doc.addImage(logoImg, 'PNG', margin, y, 44, 14);
-      y += 18;
+      doc.addImage(logoImg, 'PNG', margin, y, 50, 16);
+      y += 20;
     } else {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(28);
       doc.text('SIM', margin, y + 10);
       y += 18;
     }
-
-    // Colored Bar under Logo
-    const barWidth = 60;
-    const segW = barWidth / segments.length;
-    segments.forEach((color, i) => {
-      doc.setFillColor(color);
-      doc.rect(margin + 12 + i * segW, y - 5, segW, 1.5, 'F');
-    });
 
     doc.setTextColor(150, 150, 150);
     doc.setFontSize(8);
