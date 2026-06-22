@@ -48,95 +48,262 @@ export function BudgetDetail() {
     const jspdfUrl = 'https://esm.sh/jspdf@3.0.3';
     const { default: jsPDF } = await import(/* @vite-ignore */ jspdfUrl);
     const doc = new jsPDF();
-    const margin = 24;
+    const margin = 20;
     const width = doc.internal.pageSize.getWidth();
-    let y = 28;
+    const height = doc.internal.pageSize.getHeight();
+    let y = margin;
 
-    doc.setTextColor(20, 20, 20);
+    function checkPageBreak(needed: number) {
+      if (y + needed > height - margin) {
+        doc.addPage();
+        y = margin;
+      }
+    }
+
+    // Logo & Header
+    doc.setFillColor(6, 6, 6);
+    doc.rect(0, 0, width, 55, 'F');
+    doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(30);
-    doc.text('SIM', margin, y);
-    doc.setFontSize(9);
-    doc.setTextColor(115, 115, 115);
-    doc.text(clientOnly ? 'PROPOSTA COMERCIAL' : 'DOCUMENTO INTERNO', width - margin - 45, y);
-    y += 24;
+    doc.setFontSize(28);
+    doc.text('SIM', margin, 30);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(212, 197, 169); // Accent
+    doc.text('Still In Movement', margin, 40);
 
-    doc.setFontSize(22);
-    doc.setTextColor(20, 20, 20);
-    doc.text(budget.project_name, margin, y);
-    y += 9;
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(10);
+    doc.text(clientOnly ? 'PROPOSTA COMERCIAL' : 'ORÇAMENTO INTERNO', width - margin, 30, { align: 'right' });
+    doc.setTextColor(150, 150, 150);
+    doc.text(formatDateFull(budget.proposal_date), width - margin, 40, { align: 'right' });
+    
+    y = 75;
+
+    // Title
+    doc.setTextColor(10, 10, 10);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(24);
+    const splitTitle = doc.splitTextToSize(budget.project_name, width - margin * 2);
+    doc.text(splitTitle, margin, y);
+    y += splitTitle.length * 9 + 5;
+
+    // Client info box
+    doc.setFillColor(244, 241, 236); // Cream
+    doc.roundedRect(margin, y, width - margin * 2, 25, 3, 3, 'F');
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Cliente:', margin + 6, y + 10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`${budget.client_name} - ${budget.client_company || 'SIM'}`, margin + 25, y + 10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Projeto:', margin + 6, y + 18);
+    doc.setFont('helvetica', 'normal');
+    doc.text(budget.project_type, margin + 25, y + 18);
+    y += 40;
+
+    // Scope & Deliverables
+    checkPageBreak(50);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text('Escopo', margin, y);
+    y += 8;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    doc.setTextColor(90, 90, 90);
-    doc.text(`${budget.client_name} / ${budget.client_company || 'Cliente SIM'}`, margin, y);
-    y += 18;
-
-    const lines = [
-      ['Projeto', budget.project_type],
-      ['Data', formatDateFull(budget.proposal_date)],
-      ['Cidade', budget.production.city],
-      ['Diárias', String(budget.production.shooting_days)],
-      ['Validade', formatDateFull(budget.expires_at)],
-    ];
-    lines.forEach(([label, value]) => { doc.text(`${label}: ${value}`, margin, y); y += 7; });
-    y += 8;
+    doc.setTextColor(70, 70, 70);
+    const scopeLines = doc.splitTextToSize(budget.project_description || 'Produção audiovisual conforme briefing aprovado.', width - margin * 2);
+    doc.text(scopeLines, margin, y);
+    y += scopeLines.length * 5 + 8;
 
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(20, 20, 20);
-    doc.text('Escopo e entregáveis', margin, y);
+    doc.setTextColor(10, 10, 10);
+    doc.setFontSize(14);
+    doc.text('Entregáveis', margin, y);
     y += 8;
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor(80, 80, 80);
-    doc.splitTextToSize(budget.project_description || 'Produção audiovisual conforme briefing aprovado.', width - margin * 2).forEach((line: string) => { doc.text(line, margin, y); y += 6; });
-    y += 6;
-    deliverableLines(budget).forEach((line) => { doc.text(`- ${line}`, margin, y); y += 6; });
-    y += 8;
-
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(20, 20, 20);
-    doc.text('Investimento final', margin, y);
-    y += 12;
-    doc.setFontSize(24);
-    doc.text(formatCurrency(budget.final_price), margin, y);
-    y += 12;
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100, 100, 100);
-    doc.text('Este orçamento é válido por 30 dias após a emissão.', margin, y);
+    doc.setFontSize(10);
+    doc.setTextColor(70, 70, 70);
+    deliverableLines(budget).forEach((line) => {
+      doc.text(`•  ${line}`, margin, y);
+      y += 6;
+    });
     y += 10;
-    doc.text('Pagamento: 50% na aprovação e 50% na entrega final.', margin, y);
 
-    if (!clientOnly) {
-      y += 18;
+    if (clientOnly) {
+      // Client Investment Box
+      checkPageBreak(60);
+      doc.setFillColor(6, 6, 6);
+      doc.roundedRect(margin, y, width - margin * 2, 45, 4, 4, 'F');
+      doc.setTextColor(212, 197, 169);
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(20, 20, 20);
-      doc.text('Resumo interno', margin, y);
-      y += 8;
+      doc.setFontSize(12);
+      doc.text('Investimento Final', margin + 8, y + 14);
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(28);
+      doc.text(formatCurrency(budget.final_price), margin + 8, y + 28);
+      
+      y += 60;
+      doc.setTextColor(100, 100, 100);
+      doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
-      [['Custo', budget.cost_total], ['Fee', budget.fee_value], ['Imposto', budget.tax_value], ['Lucro', budget.profit]].forEach(([label, value]) => { doc.text(`${label}: ${formatCurrency(Number(value))}`, margin, y); y += 6; });
-      doc.text(`Margem: ${(budget.margin * 100).toFixed(1)}%`, margin, y);
+      doc.text(`Válido até: ${formatDateFull(budget.expires_at)}`, margin, y);
+      doc.text('Pagamento: 50% na aprovação do projeto e 50% na entrega final.', margin, y + 5);
+    } else {
+      // Internal Version - Items Table
+      checkPageBreak(40);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(10, 10, 10);
+      doc.setFontSize(14);
+      doc.text('Detalhamento Interno de Custos', margin, y);
+      y += 10;
+
+      // Table Header
+      doc.setFillColor(240, 240, 240);
+      doc.rect(margin, y, width - margin * 2, 8, 'F');
+      doc.setFontSize(8);
+      doc.text('ITEM', margin + 3, y + 5);
+      doc.text('QTD', margin + 85, y + 5);
+      doc.text('VENDA', margin + 100, y + 5);
+      doc.text('CUSTO', margin + 130, y + 5);
+      doc.text('SPREAD', margin + 160, y + 5);
+      y += 12;
+
+      // Table Rows
+      doc.setFont('helvetica', 'normal');
+      budget.items.forEach(item => {
+        checkPageBreak(10);
+        doc.text(item.name.slice(0, 45), margin + 3, y);
+        doc.text(String(item.quantity), margin + 85, y);
+        doc.text(formatCurrency(item.sale_price), margin + 100, y);
+        doc.text(formatCurrency(item.cost_price), margin + 130, y);
+        doc.text(formatCurrency(item.sale_price - item.cost_price), margin + 160, y);
+        doc.setDrawColor(240, 240, 240);
+        doc.line(margin, y + 2, width - margin, y + 2);
+        y += 7;
+      });
+
+      y += 10;
+      checkPageBreak(50);
+
+      // Financial Summary Box
+      doc.setFillColor(6, 6, 6);
+      doc.roundedRect(margin, y, width - margin * 2, 45, 4, 4, 'F');
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(9);
+      doc.text('CUSTO TOTAL', margin + 8, y + 12);
+      doc.text('FEE', margin + 50, y + 12);
+      doc.text('IMPOSTO', margin + 90, y + 12);
+      doc.text('LUCRO', margin + 130, y + 12);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text(formatCurrency(budget.cost_total), margin + 8, y + 20);
+      doc.text(formatCurrency(budget.fee_value), margin + 50, y + 20);
+      doc.text(formatCurrency(budget.tax_value), margin + 90, y + 20);
+      doc.setTextColor(51, 174, 116); // Green
+      doc.text(formatCurrency(budget.profit), margin + 130, y + 20);
+
+      doc.setDrawColor(40, 40, 40);
+      doc.line(margin + 8, y + 28, width - margin - 8, y + 28);
+
+      doc.setTextColor(212, 197, 169);
+      doc.setFontSize(12);
+      doc.text('PREÇO FINAL', margin + 8, y + 38);
+      doc.setFontSize(16);
+      doc.text(formatCurrency(budget.final_price), margin + 45, y + 38);
+      
+      doc.setFontSize(9);
+      doc.setTextColor(150, 150, 150);
+      doc.text(`MARGEM: ${(budget.margin * 100).toFixed(1)}%`, width - margin - 35, y + 37);
     }
+
     doc.save(`${clientOnly ? 'proposta' : 'interno'}-${budget.project_name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.pdf`);
   }
 
   async function generateDOCX() {
     if (!budget) return;
     const docxUrl = 'https://esm.sh/docx@9.5.1';
-    const { Document, HeadingLevel, Packer, Paragraph, TextRun } = await import(/* @vite-ignore */ docxUrl);
-    const doc = new Document({ sections: [{ children: [
-      new Paragraph({ text: 'SIM', heading: HeadingLevel.TITLE }),
-      new Paragraph({ text: 'Proposta Comercial', heading: HeadingLevel.HEADING_1 }),
-      new Paragraph({ children: [new TextRun({ text: budget.project_name, bold: true })] }),
-      new Paragraph({ text: `Cliente: ${budget.client_name}` }),
-      new Paragraph({ text: `Projeto: ${budget.project_type}` }),
-      new Paragraph({ text: budget.project_description || 'Produção audiovisual conforme briefing aprovado.' }),
-      new Paragraph({ text: 'Entregáveis', heading: HeadingLevel.HEADING_2 }),
-      ...deliverableLines(budget).map((line) => new Paragraph({ text: line, bullet: { level: 0 } })),
-      new Paragraph({ text: 'Investimento', heading: HeadingLevel.HEADING_2 }),
-      new Paragraph({ children: [new TextRun({ text: formatCurrency(budget.final_price), bold: true, size: 32 })] }),
-      new Paragraph({ text: 'Este orçamento é válido por 30 dias após a emissão.' }),
-      new Paragraph({ text: 'Pagamento: 50% na aprovação e 50% na entrega final.' }),
-    ] }] });
+    const { Document, Packer, Paragraph, TextRun, AlignmentType, ShadingType } = await import(/* @vite-ignore */ docxUrl);
+    
+    const doc = new Document({
+      sections: [{
+        properties: {},
+        children: [
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            shading: { type: ShadingType.CLEAR, fill: "060606" },
+            spacing: { before: 400, after: 400 },
+            children: [
+              new TextRun({ text: " SIM ", bold: true, size: 56, color: "FFFFFF", font: "Helvetica" }),
+              new TextRun({ break: 1 }),
+              new TextRun({ text: "Still In Movement", size: 16, color: "D4C5A9", font: "Helvetica" })
+            ]
+          }),
+          new Paragraph({ spacing: { before: 400 } }),
+          new Paragraph({
+            alignment: AlignmentType.RIGHT,
+            children: [
+              new TextRun({ text: "PROPOSTA COMERCIAL", size: 18, color: "888888", font: "Helvetica" }),
+              new TextRun({ break: 1 }),
+              new TextRun({ text: formatDateFull(budget.proposal_date), size: 18, color: "AAAAAA", font: "Helvetica" })
+            ]
+          }),
+          new Paragraph({ spacing: { before: 400, after: 200 } }),
+          new Paragraph({
+            children: [
+              new TextRun({ text: budget.project_name, bold: true, size: 44, color: "111111", font: "Helvetica" })
+            ]
+          }),
+          new Paragraph({
+            spacing: { before: 200, after: 400 },
+            children: [
+              new TextRun({ text: "Cliente: ", bold: true, size: 20, color: "111111", font: "Helvetica" }),
+              new TextRun({ text: `${budget.client_name} - ${budget.client_company || 'SIM'}`, size: 20, color: "444444", font: "Helvetica" }),
+              new TextRun({ break: 1 }),
+              new TextRun({ text: "Formato: ", bold: true, size: 20, color: "111111", font: "Helvetica" }),
+              new TextRun({ text: budget.project_type, size: 20, color: "444444", font: "Helvetica" })
+            ]
+          }),
+          new Paragraph({
+            spacing: { before: 200, after: 100 },
+            children: [new TextRun({ text: "Escopo do Projeto", bold: true, size: 28, color: "111111", font: "Helvetica" })]
+          }),
+          new Paragraph({
+            spacing: { after: 400 },
+            children: [new TextRun({ text: budget.project_description || 'Produção audiovisual conforme briefing aprovado.', size: 22, color: "444444", font: "Helvetica" })]
+          }),
+          new Paragraph({
+            spacing: { before: 200, after: 100 },
+            children: [new TextRun({ text: "Entregáveis e Formato", bold: true, size: 28, color: "111111", font: "Helvetica" })]
+          }),
+          ...deliverableLines(budget).map((line) => new Paragraph({
+            bullet: { level: 0 },
+            spacing: { after: 100 },
+            children: [new TextRun({ text: line, size: 22, color: "444444", font: "Helvetica" })]
+          })),
+          new Paragraph({ spacing: { before: 400 } }),
+          new Paragraph({
+            shading: { type: ShadingType.CLEAR, fill: "F4F1EC" },
+            spacing: { before: 300, after: 300 },
+            children: [
+              new TextRun({ text: " INVESTIMENTO FINAL", bold: true, size: 24, color: "111111", font: "Helvetica" }),
+              new TextRun({ break: 1 }),
+              new TextRun({ text: ` ${formatCurrency(budget.final_price)} `, bold: true, size: 56, color: "111111", font: "Helvetica" })
+            ]
+          }),
+          new Paragraph({ spacing: { before: 200 } }),
+          new Paragraph({
+            children: [
+              new TextRun({ text: `Válido até: ${formatDateFull(budget.expires_at)}`, size: 18, color: "888888", font: "Helvetica" }),
+              new TextRun({ break: 1 }),
+              new TextRun({ text: "Pagamento: 50% na aprovação do projeto e 50% na entrega final.", size: 18, color: "888888", font: "Helvetica" })
+            ]
+          })
+        ]
+      }]
+    });
+    
     const blob = await Packer.toBlob(doc);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
