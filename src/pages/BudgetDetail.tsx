@@ -60,25 +60,75 @@ export function BudgetDetail() {
       }
     }
 
-    // Logo & Header
-    doc.setFillColor(6, 6, 6);
-    doc.rect(0, 0, width, 55, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(28);
-    doc.text('SIM', margin, 30);
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(212, 197, 169); // Accent
-    doc.text('Still In Movement', margin, 40);
+    // Logo SIM - Cursiva com barra de cores (versão do PDF)
+    // Cores da barra (exatas da logo enviada)
+    const barColors = [
+      [153, 110, 167],  // Roxo
+      [228, 90, 88],    // Vermelho
+      [234, 141, 17],   // Laranja
+      [250, 196, 33],   // Amarelo
+      [51, 174, 116],   // Verde
+      [40, 148, 209],   // Azul
+      [177, 183, 177],  // Cinza
+      [244, 199, 141],  // Bege
+      [139, 90, 43]     // Marrom
+    ];
 
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(10);
-    doc.text(clientOnly ? 'PROPOSTA COMERCIAL' : 'ORÇAMENTO INTERNO', width - margin, 30, { align: 'right' });
-    doc.setTextColor(150, 150, 150);
-    doc.text(formatDateFull(budget.proposal_date), width - margin, 40, { align: 'right' });
+    // Fundo branco no topo para a logo
+    doc.setFillColor(255, 255, 255);
+    doc.rect(0, 0, width, 42, 'F');
+
+    // Desenhar a logo cursiva "Sim" estilizada (traço grosso)
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(2.5);
+    doc.setLineCap('round');
+    doc.setLineJoin('round');
+
+    // S (cursiva)
+    doc.line(margin + 5, 26, margin + 8, 20);
+    doc.line(margin + 8, 20, margin + 14, 18);
+    doc.line(margin + 14, 18, margin + 18, 20);
+    doc.line(margin + 18, 20, margin + 16, 24);
+    doc.line(margin + 16, 24, margin + 10, 26);
+    doc.line(margin + 10, 26, margin + 6, 30);
+    doc.line(margin + 6, 30, margin + 5, 34);
+
+    // i (ponto + haste)
+    doc.setFillColor(0, 0, 0);
+    doc.circle(margin + 24, 18, 1.2, 'F');
+    doc.line(margin + 24, 22, margin + 24, 32);
+
+    // m (cursiva)
+    doc.line(margin + 30, 32, margin + 30, 22);
+    doc.line(margin + 30, 22, margin + 33, 24);
+    doc.line(margin + 33, 24, margin + 36, 22);
+    doc.line(margin + 36, 22, margin + 39, 24);
+    doc.line(margin + 39, 24, margin + 42, 22);
+    doc.line(margin + 42, 22, margin + 42, 32);
+
+    // Barra de cores abaixo da logo
+    const barY = 36;
+    const barH = 4;
+    const barStartX = margin + 5;
+    const barWidth = 50;
+    const segW = barWidth / barColors.length;
+
+    barColors.forEach((color, idx) => {
+      doc.setFillColor(color[0], color[1], color[2]);
+      doc.rect(barStartX + (idx * segW), barY, segW + 0.5, barH, 'F');
+    });
+
+    // Título do documento à direita
+    doc.setTextColor(10, 10, 10);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text(clientOnly ? 'PROPOSTA COMERCIAL' : 'ORÇAMENTO INTERNO', width - margin, 25, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(100, 100, 100);
+    doc.text(formatDateFull(budget.proposal_date), width - margin, 32, { align: 'right' });
     
-    y = 75;
+    y = 55;
 
     // Title
     doc.setTextColor(10, 10, 10);
@@ -88,19 +138,21 @@ export function BudgetDetail() {
     doc.text(splitTitle, margin, y);
     y += splitTitle.length * 9 + 5;
 
-    // Client info box
-    doc.setFillColor(244, 241, 236); // Cream
-    doc.roundedRect(margin, y, width - margin * 2, 25, 3, 3, 'F');
+    // Client info box - fundo branco com borda colorida sutil
+    doc.setDrawColor(177, 183, 177); // Cinza da barra
+    doc.setLineWidth(0.5);
+    doc.roundedRect(margin, y, width - margin * 2, 28, 3, 3, 'S');
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
+    doc.setTextColor(40, 40, 40);
     doc.text('Cliente:', margin + 6, y + 10);
     doc.setFont('helvetica', 'normal');
-    doc.text(`${budget.client_name} - ${budget.client_company || 'SIM'}`, margin + 25, y + 10);
+    doc.text(`${budget.client_name} - ${budget.client_company || 'SIM'}`, margin + 28, y + 10);
     doc.setFont('helvetica', 'bold');
-    doc.text('Projeto:', margin + 6, y + 18);
+    doc.text('Projeto:', margin + 6, y + 20);
     doc.setFont('helvetica', 'normal');
-    doc.text(budget.project_type, margin + 25, y + 18);
-    y += 40;
+    doc.text(budget.project_type, margin + 28, y + 20);
+    y += 42;
 
     // Scope & Deliverables
     checkPageBreak(50);
@@ -130,24 +182,23 @@ export function BudgetDetail() {
     y += 10;
 
     if (clientOnly) {
-      // Client Investment Box
+      // Client Investment Box - usando o verde da barra de cores
       checkPageBreak(60);
-      doc.setFillColor(6, 6, 6);
-      doc.roundedRect(margin, y, width - margin * 2, 45, 4, 4, 'F');
-      doc.setTextColor(212, 197, 169);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(12);
-      doc.text('Investimento Final', margin + 8, y + 14);
+      doc.setFillColor(51, 174, 116); // Verde da barra
+      doc.roundedRect(margin, y, width - margin * 2, 48, 4, 4, 'F');
       doc.setTextColor(255, 255, 255);
-      doc.setFontSize(28);
-      doc.text(formatCurrency(budget.final_price), margin + 8, y + 28);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('INVESTIMENTO FINAL', margin + 10, y + 14);
+      doc.setFontSize(30);
+      doc.text(formatCurrency(budget.final_price), margin + 10, y + 34);
       
-      y += 60;
+      y += 62;
       doc.setTextColor(100, 100, 100);
       doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
       doc.text(`Válido até: ${formatDateFull(budget.expires_at)}`, margin, y);
-      doc.text('Pagamento: 50% na aprovação do projeto e 50% na entrega final.', margin, y + 5);
+      doc.text('Pagamento: 50% na aprovação do projeto e 50% na entrega final.', margin, y + 6);
     } else {
       // Internal Version - Items Table
       checkPageBreak(40);
@@ -185,37 +236,47 @@ export function BudgetDetail() {
       y += 10;
       checkPageBreak(50);
 
-      // Financial Summary Box
-      doc.setFillColor(6, 6, 6);
-      doc.roundedRect(margin, y, width - margin * 2, 45, 4, 4, 'F');
+      // Financial Summary Box - Versão Interna Otimizada
+      doc.setFillColor(10, 10, 10);
+      doc.roundedRect(margin, y, width - margin * 2, 52, 4, 4, 'F');
       
+      // Cabeçalho
+      doc.setTextColor(150, 150, 150);
+      doc.setFontSize(8);
+      doc.text('RESUMO FINANCEIRO INTERNO', margin + 8, y + 10);
+
+      // Colunas de dados
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(9);
-      doc.text('CUSTO TOTAL', margin + 8, y + 12);
-      doc.text('FEE', margin + 50, y + 12);
-      doc.text('IMPOSTO', margin + 90, y + 12);
-      doc.text('LUCRO', margin + 130, y + 12);
+      doc.text('CUSTO TOTAL', margin + 8, y + 20);
+      doc.text('FEE (15%)', margin + 60, y + 20);
+      doc.text('IMPOSTO (7%)', margin + 110, y + 20);
+      doc.setTextColor(51, 174, 116);
+      doc.text('LUCRO', margin + 160, y + 20);
 
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
-      doc.text(formatCurrency(budget.cost_total), margin + 8, y + 20);
-      doc.text(formatCurrency(budget.fee_value), margin + 50, y + 20);
-      doc.text(formatCurrency(budget.tax_value), margin + 90, y + 20);
-      doc.setTextColor(51, 174, 116); // Green
-      doc.text(formatCurrency(budget.profit), margin + 130, y + 20);
-
-      doc.setDrawColor(40, 40, 40);
-      doc.line(margin + 8, y + 28, width - margin - 8, y + 28);
-
-      doc.setTextColor(212, 197, 169);
       doc.setFontSize(12);
-      doc.text('PREÇO FINAL', margin + 8, y + 38);
-      doc.setFontSize(16);
-      doc.text(formatCurrency(budget.final_price), margin + 45, y + 38);
+      doc.setTextColor(255, 255, 255);
+      doc.text(formatCurrency(budget.cost_total), margin + 8, y + 29);
+      doc.text(formatCurrency(budget.fee_value), margin + 60, y + 29);
+      doc.text(formatCurrency(budget.tax_value), margin + 110, y + 29);
+      doc.setTextColor(51, 174, 116);
+      doc.text(formatCurrency(budget.profit), margin + 160, y + 29);
+
+      // Linha divisória
+      doc.setDrawColor(40, 40, 40);
+      doc.line(margin + 8, y + 36, width - margin - 8, y + 36);
+
+      // Preço Final em destaque
+      doc.setTextColor(212, 197, 169);
+      doc.setFontSize(11);
+      doc.text('PREÇO FINAL', margin + 8, y + 44);
+      doc.setFontSize(18);
+      doc.text(formatCurrency(budget.final_price), margin + 48, y + 44);
       
       doc.setFontSize(9);
       doc.setTextColor(150, 150, 150);
-      doc.text(`MARGEM: ${(budget.margin * 100).toFixed(1)}%`, width - margin - 35, y + 37);
+      doc.text(`MARGEM: ${(budget.margin * 100).toFixed(1)}%`, width - margin - 38, y + 44);
     }
 
     doc.save(`${clientOnly ? 'proposta' : 'interno'}-${budget.project_name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.pdf`);
