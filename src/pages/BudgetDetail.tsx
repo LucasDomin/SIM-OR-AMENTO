@@ -45,11 +45,9 @@ export function BudgetDetail() {
 
   async function generatePDF(clientOnly = true) {
     if (!budget) return;
-    const jspdfUrl = 'https://esm.sh/jspdf@3.0.3';
-    const html2canvasUrl = 'https://esm.sh/html2canvas@1.4.1';
-    const { default: jsPDF } = await import(/* @vite-ignore */ jspdfUrl);
-    const { default: html2canvas } = await import(/* @vite-ignore */ html2canvasUrl);
-    
+    const { default: jsPDF } = await import('jspdf');
+    const { getLogoDataUrl } = await import('../lib/logoImage');
+
     const doc = new jsPDF();
     const margin = 20;
     const width = doc.internal.pageSize.getWidth();
@@ -65,17 +63,12 @@ export function BudgetDetail() {
       }
     }
 
-    // Capture Logo
-    const logoEl = document.querySelector('svg[aria-label="SIM — Still In Movement"]');
-    let logoImg = null;
-    if (logoEl) {
-      const canvas = await html2canvas(logoEl as HTMLElement, { scale: 4, backgroundColor: null, logging: false });
-      logoImg = canvas.toDataURL('image/png');
-    }
+    // Capture Logo (SVG -> PNG nativo)
+    const logoImg = await getLogoDataUrl(4);
 
     // Header
     if (logoImg) {
-      doc.addImage(logoImg, 'PNG', margin, y, 45, 14);
+      doc.addImage(logoImg, 'PNG', margin, y, 44, 14);
       y += 18;
     } else {
       doc.setFont('helvetica', 'bold');
@@ -262,28 +255,23 @@ export function BudgetDetail() {
 
   async function generateDOCX() {
     if (!budget) return;
-    const docxUrl = 'https://esm.sh/docx@9.5.1';
-    const html2canvasUrl = 'https://esm.sh/html2canvas@1.4.1';
-    const { Document, Packer, Paragraph, TextRun, AlignmentType, ImageRun } = await import(/* @vite-ignore */ docxUrl);
-    const { default: html2canvas } = await import(/* @vite-ignore */ html2canvasUrl);
+    const { Document, Packer, Paragraph, TextRun, AlignmentType, ImageRun } = await import('docx');
+    const { getLogoDataUrl, base64ToUint8Array } = await import('../lib/logoImage');
 
-    // Capture Logo
-    const logoEl = document.querySelector('svg[aria-label="SIM — Still In Movement"]');
-    let logoData = null;
-    if (logoEl) {
-      const canvas = await html2canvas(logoEl as HTMLElement, { scale: 3, backgroundColor: null, logging: false });
-      logoData = canvas.toDataURL('image/png').split(',')[1];
-    }
-    
+    // Capture Logo (SVG -> PNG nativo)
+    const logoDataUrl = await getLogoDataUrl(3);
+    const logoBytes = logoDataUrl ? base64ToUint8Array(logoDataUrl.split(',')[1]) : null;
+
     const doc = new Document({
       sections: [{
         children: [
           new Paragraph({
             alignment: AlignmentType.LEFT,
             children: [
-              ...(logoData ? [new ImageRun({
-                data: Buffer.from(logoData, 'base64'),
-                transformation: { width: 140, height: 45 }
+              ...(logoBytes ? [new ImageRun({
+                type: 'png',
+                data: logoBytes,
+                transformation: { width: 150, height: 48 }
               })] : [new TextRun({ text: "SIM", bold: true, size: 48 })])
             ]
           }),
