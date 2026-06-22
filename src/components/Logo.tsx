@@ -8,14 +8,15 @@ import { useEffect, useId, useState } from 'react';
  * viewBox 0 0 1192 380 (proporção ~3.14:1) — posicionada à esquerda.
  */
 const SEGMENTS = [
-  'rgb(153,110,167)',
-  'rgb(228,90,88)',
-  'rgb(234,141,17)',
-  'rgb(250,196,33)',
-  'rgb(51,174,116)',
-  'rgb(40,148,209)',
-  'rgb(177,183,177)',
-  'rgb(244,199,141)',
+  '#996EA7', // Purple
+  '#E45A58', // Red
+  '#EA8D11', // Orange
+  '#FAC421', // Yellow
+  '#33AE74', // Green
+  '#2894D1', // Blue
+  '#B1B7B1', // Grey
+  '#F4C78D', // Cream
+  '#8B5A2B', // Brown
 ];
 
 const WORD_PATH =

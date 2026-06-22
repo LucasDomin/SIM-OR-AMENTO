@@ -46,12 +46,17 @@ export function BudgetDetail() {
   async function generatePDF(clientOnly = true) {
     if (!budget) return;
     const jspdfUrl = 'https://esm.sh/jspdf@3.0.3';
+    const html2canvasUrl = 'https://esm.sh/html2canvas@1.4.1';
     const { default: jsPDF } = await import(/* @vite-ignore */ jspdfUrl);
+    const { default: html2canvas } = await import(/* @vite-ignore */ html2canvasUrl);
+    
     const doc = new jsPDF();
     const margin = 20;
     const width = doc.internal.pageSize.getWidth();
     const height = doc.internal.pageSize.getHeight();
     let y = margin;
+
+    const segments = ['#996EA7', '#E45A58', '#EA8D11', '#FAC421', '#33AE74', '#2894D1', '#B1B7B1', '#F4C78D', '#8B5A2B'];
 
     function checkPageBreak(needed: number) {
       if (y + needed > height - margin) {
@@ -60,223 +65,196 @@ export function BudgetDetail() {
       }
     }
 
-    // Logo SIM - Cursiva com barra de cores (versão do PDF)
-    // Cores da barra (exatas da logo enviada)
-    const barColors = [
-      [153, 110, 167],  // Roxo
-      [228, 90, 88],    // Vermelho
-      [234, 141, 17],   // Laranja
-      [250, 196, 33],   // Amarelo
-      [51, 174, 116],   // Verde
-      [40, 148, 209],   // Azul
-      [177, 183, 177],  // Cinza
-      [244, 199, 141],  // Bege
-      [139, 90, 43]     // Marrom
-    ];
+    // Capture Logo
+    const logoEl = document.querySelector('svg[aria-label="SIM — Still In Movement"]');
+    let logoImg = null;
+    if (logoEl) {
+      const canvas = await html2canvas(logoEl as HTMLElement, { scale: 4, backgroundColor: null, logging: false });
+      logoImg = canvas.toDataURL('image/png');
+    }
 
-    // Fundo branco no topo para a logo
-    doc.setFillColor(255, 255, 255);
-    doc.rect(0, 0, width, 42, 'F');
+    // Header
+    if (logoImg) {
+      doc.addImage(logoImg, 'PNG', margin, y, 45, 14);
+      y += 18;
+    } else {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(28);
+      doc.text('SIM', margin, y + 10);
+      y += 18;
+    }
 
-    // Desenhar a logo cursiva "Sim" estilizada (traço grosso)
-    doc.setDrawColor(0, 0, 0);
-    doc.setLineWidth(2.5);
-    doc.setLineCap('round');
-    doc.setLineJoin('round');
-
-    // S (cursiva)
-    doc.line(margin + 5, 26, margin + 8, 20);
-    doc.line(margin + 8, 20, margin + 14, 18);
-    doc.line(margin + 14, 18, margin + 18, 20);
-    doc.line(margin + 18, 20, margin + 16, 24);
-    doc.line(margin + 16, 24, margin + 10, 26);
-    doc.line(margin + 10, 26, margin + 6, 30);
-    doc.line(margin + 6, 30, margin + 5, 34);
-
-    // i (ponto + haste)
-    doc.setFillColor(0, 0, 0);
-    doc.circle(margin + 24, 18, 1.2, 'F');
-    doc.line(margin + 24, 22, margin + 24, 32);
-
-    // m (cursiva)
-    doc.line(margin + 30, 32, margin + 30, 22);
-    doc.line(margin + 30, 22, margin + 33, 24);
-    doc.line(margin + 33, 24, margin + 36, 22);
-    doc.line(margin + 36, 22, margin + 39, 24);
-    doc.line(margin + 39, 24, margin + 42, 22);
-    doc.line(margin + 42, 22, margin + 42, 32);
-
-    // Barra de cores abaixo da logo
-    const barY = 36;
-    const barH = 4;
-    const barStartX = margin + 5;
-    const barWidth = 50;
-    const segW = barWidth / barColors.length;
-
-    barColors.forEach((color, idx) => {
-      doc.setFillColor(color[0], color[1], color[2]);
-      doc.rect(barStartX + (idx * segW), barY, segW + 0.5, barH, 'F');
+    // Colored Bar under Logo
+    const barWidth = 60;
+    const segW = barWidth / segments.length;
+    segments.forEach((color, i) => {
+      doc.setFillColor(color);
+      doc.rect(margin + 12 + i * segW, y - 5, segW, 1.5, 'F');
     });
 
-    // Título do documento à direita
-    doc.setTextColor(10, 10, 10);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.text(clientOnly ? 'PROPOSTA COMERCIAL' : 'ORÇAMENTO INTERNO', width - margin, 25, { align: 'right' });
-    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(150, 150, 150);
     doc.setFontSize(8);
-    doc.setTextColor(100, 100, 100);
-    doc.text(formatDateFull(budget.proposal_date), width - margin, 32, { align: 'right' });
-    
-    y = 55;
+    doc.setFont('helvetica', 'normal');
+    doc.text(clientOnly ? 'PROPOSTA COMERCIAL' : 'ORÇAMENTO INTERNO', width - margin, margin + 5, { align: 'right' });
+    doc.text(formatDateFull(budget.proposal_date), width - margin, margin + 10, { align: 'right' });
+
+    y += 15;
 
     // Title
     doc.setTextColor(10, 10, 10);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(24);
-    const splitTitle = doc.splitTextToSize(budget.project_name, width - margin * 2);
+    doc.setFontSize(22);
+    const splitTitle = doc.splitTextToSize(budget.project_name.toUpperCase(), width - margin * 2);
     doc.text(splitTitle, margin, y);
-    y += splitTitle.length * 9 + 5;
+    y += splitTitle.length * 8 + 10;
 
-    // Client info box - fundo branco com borda colorida sutil
-    doc.setDrawColor(177, 183, 177); // Cinza da barra
-    doc.setLineWidth(0.5);
-    doc.roundedRect(margin, y, width - margin * 2, 28, 3, 3, 'S');
-    doc.setFontSize(10);
+    // Client/Project Info Box
+    doc.setFillColor(248, 248, 248);
+    doc.roundedRect(margin, y, width - margin * 2, 22, 2, 2, 'F');
+    doc.setFontSize(9);
+    doc.setTextColor(80, 80, 80);
+    doc.text('CLIENTE', margin + 6, y + 8);
+    doc.text('PROJETO', margin + (width - margin * 2) / 2, y + 8);
+    doc.setTextColor(20, 20, 20);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(40, 40, 40);
-    doc.text('Cliente:', margin + 6, y + 10);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`${budget.client_name} - ${budget.client_company || 'SIM'}`, margin + 28, y + 10);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Projeto:', margin + 6, y + 20);
-    doc.setFont('helvetica', 'normal');
-    doc.text(budget.project_type, margin + 28, y + 20);
-    y += 42;
+    doc.text(budget.client_name.toUpperCase(), margin + 6, y + 14);
+    doc.text(budget.project_type.toUpperCase(), margin + (width - margin * 2) / 2, y + 14);
+    y += 32;
 
-    // Scope & Deliverables
-    checkPageBreak(50);
+    // Scope
+    checkPageBreak(40);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(14);
-    doc.text('Escopo', margin, y);
+    doc.setFontSize(12);
+    doc.text('ESCOPO E OBJETIVOS', margin, y);
+    y += 6;
+    doc.setDrawColor(230, 230, 230);
+    doc.line(margin, y, margin + 40, y);
     y += 8;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    doc.setTextColor(70, 70, 70);
-    const scopeLines = doc.splitTextToSize(budget.project_description || 'Produção audiovisual conforme briefing aprovado.', width - margin * 2);
+    doc.setTextColor(60, 60, 60);
+    const scopeLines = doc.splitTextToSize(budget.project_description || 'Produção audiovisual conforme briefing acordado.', width - margin * 2);
     doc.text(scopeLines, margin, y);
-    y += scopeLines.length * 5 + 8;
+    y += scopeLines.length * 5 + 12;
 
+    // Deliverables
+    checkPageBreak(40);
     doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
     doc.setTextColor(10, 10, 10);
-    doc.setFontSize(14);
-    doc.text('Entregáveis', margin, y);
+    doc.text('ENTREGÁVEIS', margin, y);
+    y += 6;
+    doc.line(margin, y, margin + 30, y);
     y += 8;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    doc.setTextColor(70, 70, 70);
-    deliverableLines(budget).forEach((line) => {
-      doc.text(`•  ${line}`, margin, y);
+    deliverableLines(budget).forEach((line, i) => {
+      checkPageBreak(8);
+      // Small colored bullet
+      doc.setFillColor(segments[i % segments.length]);
+      doc.circle(margin + 2, y - 1, 0.8, 'F');
+      doc.text(line, margin + 6, y);
       y += 6;
     });
-    y += 10;
+    y += 12;
 
     if (clientOnly) {
-      // Client Investment Box - usando o verde da barra de cores
-      checkPageBreak(60);
-      doc.setFillColor(51, 174, 116); // Verde da barra
-      doc.roundedRect(margin, y, width - margin * 2, 48, 4, 4, 'F');
+      // Client Investment
+      checkPageBreak(50);
+      doc.setFillColor(10, 10, 10);
+      doc.roundedRect(margin, y, width - margin * 2, 40, 2, 2, 'F');
       doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
-      doc.text('INVESTIMENTO FINAL', margin + 10, y + 14);
-      doc.setFontSize(30);
-      doc.text(formatCurrency(budget.final_price), margin + 10, y + 34);
-      
-      y += 62;
-      doc.setTextColor(100, 100, 100);
-      doc.setFontSize(9);
+      doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
-      doc.text(`Válido até: ${formatDateFull(budget.expires_at)}`, margin, y);
-      doc.text('Pagamento: 50% na aprovação do projeto e 50% na entrega final.', margin, y + 6);
-    } else {
-      // Internal Version - Items Table
-      checkPageBreak(40);
+      doc.text('INVESTIMENTO TOTAL', margin + 10, y + 12);
+      doc.setFontSize(26);
       doc.setFont('helvetica', 'bold');
-      doc.setTextColor(10, 10, 10);
-      doc.setFontSize(14);
-      doc.text('Detalhamento Interno de Custos', margin, y);
+      doc.text(formatCurrency(budget.final_price), margin + 10, y + 28);
+      
+      // Validity bar
+      const barH = 2;
+      segments.forEach((color, i) => {
+        doc.setFillColor(color);
+        doc.rect(margin + 10 + i * ((width - margin * 2 - 20) / segments.length), y + 34, (width - margin * 2 - 20) / segments.length, barH, 'F');
+      });
+
+      y += 55;
+      doc.setTextColor(120, 120, 120);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`PROPOSTA VÁLIDA POR 30 DIAS ATÉ ${formatDate(budget.expires_at)}`, margin, y);
+      doc.text('CONDIÇÕES: 50% NO ACEITE E 50% NA ENTREGA FINAL.', margin, y + 5);
+    } else {
+      // Internal Detail
+      checkPageBreak(50);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('DETALHAMENTO FINANCEIRO INTERNO', margin, y);
       y += 10;
 
-      // Table Header
-      doc.setFillColor(240, 240, 240);
-      doc.rect(margin, y, width - margin * 2, 8, 'F');
-      doc.setFontSize(8);
-      doc.text('ITEM', margin + 3, y + 5);
-      doc.text('QTD', margin + 85, y + 5);
-      doc.text('VENDA', margin + 100, y + 5);
-      doc.text('CUSTO', margin + 130, y + 5);
-      doc.text('SPREAD', margin + 160, y + 5);
-      y += 12;
+      // Summary Grid
+      const boxW = (width - margin * 2 - 10) / 3;
+      const metrics = [
+        { label: 'CUSTO TOTAL', value: formatCurrency(budget.cost_total) },
+        { label: 'FEE (15%)', value: formatCurrency(budget.fee_value) },
+        { label: 'IMPOSTO (7%)', value: formatCurrency(budget.tax_value) },
+        { label: 'LUCRO ESTIMADO', value: formatCurrency(budget.profit), color: '#33AE74' },
+        { label: 'MARGEM', value: `${(budget.margin * 100).toFixed(1)}%` },
+        { label: 'PREÇO FINAL', value: formatCurrency(budget.final_price), color: '#EA8D11' }
+      ];
 
-      // Table Rows
+      metrics.forEach((m, i) => {
+        const row = Math.floor(i / 3);
+        const col = i % 3;
+        const bx = margin + col * (boxW + 5);
+        const by = y + row * 22;
+        doc.setFillColor(245, 245, 245);
+        doc.roundedRect(bx, by, boxW, 18, 1, 1, 'F');
+        doc.setFontSize(7);
+        doc.setTextColor(100, 100, 100);
+        doc.setFont('helvetica', 'normal');
+        doc.text(m.label, bx + 4, by + 6);
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(m.color || '#000000');
+        doc.text(m.value, bx + 4, by + 13);
+      });
+      y += 55;
+
+      // Item Table
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      doc.text('ITENS E SERVIÇOS', margin, y);
+      y += 6;
+      doc.setFillColor(0, 0, 0);
+      doc.rect(margin, y, width - margin * 2, 0.5, 'F');
+      y += 8;
+
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.text('DESCRIÇÃO', margin, y);
+      doc.text('QTD', margin + 90, y);
+      doc.text('VENDA', margin + 110, y);
+      doc.text('CUSTO', margin + 140, y);
+      doc.text('SPREAD', margin + 170, y);
+      y += 4;
+
       doc.setFont('helvetica', 'normal');
       budget.items.forEach(item => {
         checkPageBreak(10);
-        doc.text(item.name.slice(0, 45), margin + 3, y);
-        doc.text(String(item.quantity), margin + 85, y);
-        doc.text(formatCurrency(item.sale_price), margin + 100, y);
-        doc.text(formatCurrency(item.cost_price), margin + 130, y);
-        doc.text(formatCurrency(item.sale_price - item.cost_price), margin + 160, y);
+        y += 6;
+        doc.setTextColor(40, 40, 40);
+        doc.text(item.name.slice(0, 50), margin, y);
+        doc.text(String(item.quantity), margin + 90, y);
+        doc.text(formatCurrency(item.sale_price), margin + 110, y);
+        doc.text(formatCurrency(item.cost_price), margin + 140, y);
+        const spread = item.sale_price - item.cost_price;
+        doc.setTextColor(spread >= 0 ? '#33AE74' : '#E45A58');
+        doc.text(formatCurrency(spread), margin + 170, y);
+        
         doc.setDrawColor(240, 240, 240);
         doc.line(margin, y + 2, width - margin, y + 2);
-        y += 7;
       });
-
-      y += 10;
-      checkPageBreak(50);
-
-      // Financial Summary Box - Versão Interna Otimizada
-      doc.setFillColor(10, 10, 10);
-      doc.roundedRect(margin, y, width - margin * 2, 52, 4, 4, 'F');
-      
-      // Cabeçalho
-      doc.setTextColor(150, 150, 150);
-      doc.setFontSize(8);
-      doc.text('RESUMO FINANCEIRO INTERNO', margin + 8, y + 10);
-
-      // Colunas de dados
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(9);
-      doc.text('CUSTO TOTAL', margin + 8, y + 20);
-      doc.text('FEE (15%)', margin + 60, y + 20);
-      doc.text('IMPOSTO (7%)', margin + 110, y + 20);
-      doc.setTextColor(51, 174, 116);
-      doc.text('LUCRO', margin + 160, y + 20);
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(12);
-      doc.setTextColor(255, 255, 255);
-      doc.text(formatCurrency(budget.cost_total), margin + 8, y + 29);
-      doc.text(formatCurrency(budget.fee_value), margin + 60, y + 29);
-      doc.text(formatCurrency(budget.tax_value), margin + 110, y + 29);
-      doc.setTextColor(51, 174, 116);
-      doc.text(formatCurrency(budget.profit), margin + 160, y + 29);
-
-      // Linha divisória
-      doc.setDrawColor(40, 40, 40);
-      doc.line(margin + 8, y + 36, width - margin - 8, y + 36);
-
-      // Preço Final em destaque
-      doc.setTextColor(212, 197, 169);
-      doc.setFontSize(11);
-      doc.text('PREÇO FINAL', margin + 8, y + 44);
-      doc.setFontSize(18);
-      doc.text(formatCurrency(budget.final_price), margin + 48, y + 44);
-      
-      doc.setFontSize(9);
-      doc.setTextColor(150, 150, 150);
-      doc.text(`MARGEM: ${(budget.margin * 100).toFixed(1)}%`, width - margin - 38, y + 44);
     }
 
     doc.save(`${clientOnly ? 'proposta' : 'interno'}-${budget.project_name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.pdf`);
@@ -285,80 +263,81 @@ export function BudgetDetail() {
   async function generateDOCX() {
     if (!budget) return;
     const docxUrl = 'https://esm.sh/docx@9.5.1';
-    const { Document, Packer, Paragraph, TextRun, AlignmentType, ShadingType } = await import(/* @vite-ignore */ docxUrl);
+    const html2canvasUrl = 'https://esm.sh/html2canvas@1.4.1';
+    const { Document, Packer, Paragraph, TextRun, AlignmentType, ImageRun } = await import(/* @vite-ignore */ docxUrl);
+    const { default: html2canvas } = await import(/* @vite-ignore */ html2canvasUrl);
+
+    // Capture Logo
+    const logoEl = document.querySelector('svg[aria-label="SIM — Still In Movement"]');
+    let logoData = null;
+    if (logoEl) {
+      const canvas = await html2canvas(logoEl as HTMLElement, { scale: 3, backgroundColor: null, logging: false });
+      logoData = canvas.toDataURL('image/png').split(',')[1];
+    }
     
     const doc = new Document({
       sections: [{
-        properties: {},
         children: [
           new Paragraph({
-            alignment: AlignmentType.CENTER,
-            shading: { type: ShadingType.CLEAR, fill: "060606" },
-            spacing: { before: 400, after: 400 },
+            alignment: AlignmentType.LEFT,
             children: [
-              new TextRun({ text: " SIM ", bold: true, size: 56, color: "FFFFFF", font: "Helvetica" }),
+              ...(logoData ? [new ImageRun({
+                data: Buffer.from(logoData, 'base64'),
+                transformation: { width: 140, height: 45 }
+              })] : [new TextRun({ text: "SIM", bold: true, size: 48 })])
+            ]
+          }),
+          new Paragraph({
+            alignment: AlignmentType.RIGHT,
+            children: [
+              new TextRun({ text: "PROPOSTA COMERCIAL", size: 16, color: "999999" }),
               new TextRun({ break: 1 }),
-              new TextRun({ text: "Still In Movement", size: 16, color: "D4C5A9", font: "Helvetica" })
+              new TextRun({ text: formatDateFull(budget.proposal_date), size: 16, color: "999999" })
             ]
           }),
           new Paragraph({ spacing: { before: 400 } }),
           new Paragraph({
-            alignment: AlignmentType.RIGHT,
-            children: [
-              new TextRun({ text: "PROPOSTA COMERCIAL", size: 18, color: "888888", font: "Helvetica" }),
-              new TextRun({ break: 1 }),
-              new TextRun({ text: formatDateFull(budget.proposal_date), size: 18, color: "AAAAAA", font: "Helvetica" })
-            ]
-          }),
-          new Paragraph({ spacing: { before: 400, after: 200 } }),
-          new Paragraph({
-            children: [
-              new TextRun({ text: budget.project_name, bold: true, size: 44, color: "111111", font: "Helvetica" })
-            ]
+            children: [new TextRun({ text: budget.project_name.toUpperCase(), bold: true, size: 36, color: "000000" })]
           }),
           new Paragraph({
             spacing: { before: 200, after: 400 },
             children: [
-              new TextRun({ text: "Cliente: ", bold: true, size: 20, color: "111111", font: "Helvetica" }),
-              new TextRun({ text: `${budget.client_name} - ${budget.client_company || 'SIM'}`, size: 20, color: "444444", font: "Helvetica" }),
+              new TextRun({ text: "CLIENTE: ", bold: true, size: 18 }),
+              new TextRun({ text: budget.client_name.toUpperCase(), size: 18 }),
               new TextRun({ break: 1 }),
-              new TextRun({ text: "Formato: ", bold: true, size: 20, color: "111111", font: "Helvetica" }),
-              new TextRun({ text: budget.project_type, size: 20, color: "444444", font: "Helvetica" })
+              new TextRun({ text: "PROJETO: ", bold: true, size: 18 }),
+              new TextRun({ text: budget.project_type.toUpperCase(), size: 18 })
             ]
           }),
           new Paragraph({
-            spacing: { before: 200, after: 100 },
-            children: [new TextRun({ text: "Escopo do Projeto", bold: true, size: 28, color: "111111", font: "Helvetica" })]
+            children: [new TextRun({ text: "ESCOPO", bold: true, size: 24 })]
           }),
           new Paragraph({
-            spacing: { after: 400 },
-            children: [new TextRun({ text: budget.project_description || 'Produção audiovisual conforme briefing aprovado.', size: 22, color: "444444", font: "Helvetica" })]
+            spacing: { after: 300 },
+            children: [new TextRun({ text: budget.project_description || 'Produção audiovisual conforme briefing acordado.', size: 20, color: "333333" })]
           }),
           new Paragraph({
-            spacing: { before: 200, after: 100 },
-            children: [new TextRun({ text: "Entregáveis e Formato", bold: true, size: 28, color: "111111", font: "Helvetica" })]
+            children: [new TextRun({ text: "ENTREGÁVEIS", bold: true, size: 24 })]
           }),
           ...deliverableLines(budget).map((line) => new Paragraph({
-            bullet: { level: 0 },
+            text: `• ${line}`,
             spacing: { after: 100 },
-            children: [new TextRun({ text: line, size: 22, color: "444444", font: "Helvetica" })]
           })),
           new Paragraph({ spacing: { before: 400 } }),
           new Paragraph({
-            shading: { type: ShadingType.CLEAR, fill: "F4F1EC" },
-            spacing: { before: 300, after: 300 },
+            alignment: AlignmentType.CENTER,
             children: [
-              new TextRun({ text: " INVESTIMENTO FINAL", bold: true, size: 24, color: "111111", font: "Helvetica" }),
+              new TextRun({ text: "INVESTIMENTO TOTAL", bold: true, size: 20, color: "666666" }),
               new TextRun({ break: 1 }),
-              new TextRun({ text: ` ${formatCurrency(budget.final_price)} `, bold: true, size: 56, color: "111111", font: "Helvetica" })
+              new TextRun({ text: formatCurrency(budget.final_price), bold: true, size: 52, color: "000000" })
             ]
           }),
-          new Paragraph({ spacing: { before: 200 } }),
           new Paragraph({
+            spacing: { before: 400 },
             children: [
-              new TextRun({ text: `Válido até: ${formatDateFull(budget.expires_at)}`, size: 18, color: "888888", font: "Helvetica" }),
+              new TextRun({ text: `Validade: 30 dias (${formatDate(budget.expires_at)})`, size: 16, color: "888888" }),
               new TextRun({ break: 1 }),
-              new TextRun({ text: "Pagamento: 50% na aprovação do projeto e 50% na entrega final.", size: 18, color: "888888", font: "Helvetica" })
+              new TextRun({ text: "Pagamento: 50% no aceite e 50% na entrega.", size: 16, color: "888888" })
             ]
           })
         ]

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useParams } from 'react-router-dom';
+import { Logo } from '../components/Logo';
 import { formatCurrency, supabase } from '../lib/supabase';
-import { formatDateFull } from '../lib/utils';
+import { formatDate, formatDateFull } from '../lib/utils';
 import type { Budget } from '../types';
 
 export function ProposalPublic() {
@@ -22,6 +23,8 @@ export function ProposalPublic() {
   if (loading) return <div className="min-h-screen bg-noir-950" />;
   if (!budget) return <div className="flex min-h-screen items-center justify-center bg-noir-950 text-white/50">Proposta não encontrada.</div>;
 
+  const segments = ['#996EA7', '#E45A58', '#EA8D11', '#FAC421', '#33AE74', '#2894D1', '#B1B7B1', '#F4C78D', '#8B5A2B'];
+
   const deliverables = [
     budget.deliverables.videos ? `${budget.deliverables.videos} vídeo(s) finalizados` : '',
     budget.deliverables.photos ? `${budget.deliverables.photos} foto(s) tratadas` : '',
@@ -36,9 +39,15 @@ export function ProposalPublic() {
     <div className="min-h-screen bg-cream text-noir-900">
       <motion.main initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.8 }} className="mx-auto max-w-4xl px-6 py-14 md:py-20">
         <section className="min-h-[70vh] border-b border-black/10 pb-16">
-          <div>
-            <p className="font-display text-3xl font-semibold tracking-tight text-black md:text-4xl">SIM</p>
-            <p className="mt-1 text-[10px] uppercase tracking-[0.34em] text-black/35">Still In Movement</p>
+          <div className="flex flex-col items-start">
+            <div className="w-32">
+              <Logo className="w-full text-black" animated />
+            </div>
+            <div className="mt-3 flex h-1 w-24 overflow-hidden rounded-full">
+              {segments.map((c) => (
+                <div key={c} className="h-full flex-1" style={{ backgroundColor: c }} />
+              ))}
+            </div>
           </div>
           <p className="mt-16 text-xs uppercase tracking-[0.34em] text-black/35 md:mt-20">Proposta Comercial</p>
           <h1 className="mt-5 line-clamp-3 break-words font-display text-5xl leading-tight tracking-tight text-black md:text-7xl">{budget.project_name}</h1>
@@ -51,9 +60,32 @@ export function ProposalPublic() {
 
         <Section title="About SIM"><p>A SIM é um estúdio audiovisual que combina linguagem cinematográfica, precisão comercial e execução premium para marcas, campanhas e experiências ao vivo.</p></Section>
         <Section title="Scope"><p className="line-clamp-12">{budget.project_description || 'Produção audiovisual conforme briefing aprovado.'}</p></Section>
-        <Section title="Deliverables"><div className="grid gap-3 md:grid-cols-2">{deliverables.map((item) => <div key={item} className="border-t border-black/10 pt-3 text-black/65">{item}</div>)}</div></Section>
+        <Section title="Deliverables">
+          <div className="grid gap-3 md:grid-cols-2">
+            {deliverables.map((item, i) => (
+              <div key={item} className="flex items-center gap-3 border-t border-black/10 pt-3 text-black/65">
+                <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: segments[i % segments.length] }} />
+                {item}
+              </div>
+            ))}
+          </div>
+        </Section>
         <Section title="Schedule"><p>{budget.production.shooting_days} diária(s) de captação em {budget.production.city}. Transporte {budget.production.need_transportation ? 'incluído no escopo' : 'não solicitado'}. Hospedagem {budget.production.need_lodging ? 'incluída no escopo' : 'não solicitada'}.</p></Section>
-        <Section title="Investment"><p className="truncate font-display text-5xl text-black md:text-6xl">{formatCurrency(budget.final_price)}</p><p className="mt-6 text-sm text-black/45">Pagamento: 50% na aprovação e 50% na entrega final.</p><p className="mt-2 text-sm text-black/45">Este orçamento é válido por 30 dias após a emissão.</p></Section>
+        <Section title="Investment">
+          <div className="rounded-2xl bg-noir-900 p-8 text-white md:p-12">
+            <p className="text-xs uppercase tracking-[0.3em] text-accent">Investimento Total</p>
+            <p className="mt-4 truncate font-display text-5xl md:text-7xl">{formatCurrency(budget.final_price)}</p>
+            <div className="mt-8 flex h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+              {segments.map((c) => (
+                <div key={c} className="h-full flex-1" style={{ backgroundColor: c }} />
+              ))}
+            </div>
+            <div className="mt-8 space-y-2 text-xs text-white/40">
+              <p>Pagamento: 50% na aprovação e 50% na entrega final.</p>
+              <p>Validade: 30 dias até {formatDate(budget.expires_at)}</p>
+            </div>
+          </div>
+        </Section>
       </motion.main>
     </div>
   );
