@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, ArrowRight } from 'lucide-react';
 import { Logo } from '../components/Logo';
 import { useAuth } from '../contexts/AuthContext';
+import { t } from '../lib/i18n';
 
 export function Login() {
   const navigate = useNavigate();
@@ -20,7 +21,7 @@ export function Login() {
     setLoading(true);
     const { error } = await signIn(email, password);
     if (error) {
-      setError(error);
+      setError(error === 'Credenciais inválidas' ? t.invalidCredentials : error);
       setLoading(false);
       return;
     }
@@ -48,10 +49,10 @@ export function Login() {
           transition={{ delay: 0.2, duration: 0.5 }}
         >
           <h1 className="text-2xl font-display font-semibold text-white text-center mb-2">
-            Bem-vindo
+            {t.loginWelcome}
           </h1>
           <p className="text-sm text-white/40 text-center mb-8">
-            Entre com suas credenciais para acessar o sistema
+            {t.loginSubtitle}
           </p>
         </motion.div>
 
@@ -62,7 +63,7 @@ export function Login() {
             transition={{ delay: 0.3 }}
           >
             <label className="block text-xs font-medium text-white/50 mb-1.5 uppercase tracking-wider">
-              E-mail
+              {t.email}
             </label>
             <input
               type="email"
@@ -80,7 +81,7 @@ export function Login() {
             transition={{ delay: 0.4 }}
           >
             <label className="block text-xs font-medium text-white/50 mb-1.5 uppercase tracking-wider">
-              Senha
+              {t.password}
             </label>
             <div className="relative">
               <input
@@ -125,7 +126,7 @@ export function Login() {
               <div className="w-5 h-5 border-2 border-sim-black/30 border-t-sim-black rounded-full animate-spin" />
             ) : (
               <>
-                Entrar
+                {t.enter}
                 <ArrowRight size={16} />
               </>
             )}

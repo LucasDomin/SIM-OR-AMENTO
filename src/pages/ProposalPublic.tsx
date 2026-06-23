@@ -4,14 +4,20 @@ import { useParams } from 'react-router-dom';
 import { Logo } from '../components/Logo';
 import { formatCurrency, supabase } from '../lib/supabase';
 import { formatDate, formatDateFull } from '../lib/utils';
+import { t } from '../lib/i18n';
 import type { Budget } from '../types';
+
+const SEGMENTS = ['#996EA7', '#E45A58', '#EA8D11', '#FAC421', '#33AE74', '#2894D1', '#B1B7B1', '#F4C78D', '#8B5A2B'];
 
 export function ProposalPublic() {
   const { slug } = useParams<{ slug: string }>();
   const [budget, setBudget] = useState<Budget | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { load(); }, [slug]);
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug]);
 
   async function load() {
     const result = await supabase.from('budgets').select().data();
@@ -21,68 +27,100 @@ export function ProposalPublic() {
   }
 
   if (loading) return <div className="min-h-screen bg-noir-950" />;
-  if (!budget) return <div className="flex min-h-screen items-center justify-center bg-noir-950 text-white/50">Proposta não encontrada.</div>;
+  if (!budget)
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-noir-950 text-white/50">
+        {t.proposalNotFound}
+      </div>
+    );
 
-  const segments = ['#996EA7', '#E45A58', '#EA8D11', '#FAC421', '#33AE74', '#2894D1', '#B1B7B1', '#F4C78D', '#8B5A2B'];
-
+  const reels = budget.reels.map((r) => `${r.name} · ${r.quantity} unidade(s)`);
+  const services = budget.services.map((s) => s.name);
   const deliverables = [
-    budget.deliverables.videos ? `${budget.deliverables.videos} vídeo(s) finalizados` : '',
-    budget.deliverables.photos ? `${budget.deliverables.photos} foto(s) tratadas` : '',
-    budget.deliverables.reels ? `${budget.deliverables.reels} reels` : '',
-    budget.deliverables.pilulas ? `${budget.deliverables.pilulas} pílulas` : '',
-    budget.deliverables.sameday ? 'Sameday' : '',
-    budget.deliverables.aftermovie ? 'Aftermovie' : '',
-    budget.deliverables.videocase ? 'Videocase' : '',
+    ...services.slice(0, 3).map((s) => `${s} incluso`),
+    reels.length > 0 ? `${reels.length} reels formatados` : '',
   ].filter(Boolean);
 
   return (
     <div className="min-h-screen bg-cream text-noir-900">
-      <motion.main initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.8 }} className="mx-auto max-w-4xl px-6 py-14 md:py-20">
+      <motion.main
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.8 }}
+        className="mx-auto max-w-4xl px-6 py-14 md:py-20"
+      >
         <section className="min-h-[70vh] border-b border-black/10 pb-16">
           <div className="flex flex-col items-start">
             <div className="w-32">
               <Logo className="w-full text-black" animated />
             </div>
             <div className="mt-3 flex h-1 w-24 overflow-hidden rounded-full">
-              {segments.map((c) => (
+              {SEGMENTS.map((c) => (
                 <div key={c} className="h-full flex-1" style={{ backgroundColor: c }} />
               ))}
             </div>
           </div>
-          <p className="mt-16 text-xs uppercase tracking-[0.34em] text-black/35 md:mt-20">Proposta Comercial</p>
-          <h1 className="mt-5 line-clamp-3 break-words font-display text-5xl leading-tight tracking-tight text-black md:text-7xl">{budget.project_name}</h1>
+          <p className="mt-16 text-xs uppercase tracking-[0.34em] text-black/35 md:mt-20">{t.proposalCommercial}</p>
+          <h1 className="mt-5 line-clamp-3 break-words font-display text-5xl leading-tight tracking-tight text-black md:text-7xl">
+            {budget.project_name}
+          </h1>
           <div className="mt-8 grid gap-4 text-sm text-black/55 md:mt-10 md:grid-cols-3">
-            <div className="min-w-0"><p>Cliente</p><p className="truncate text-black">{budget.client_name}</p></div>
-            <div className="min-w-0"><p>Projeto</p><p className="truncate text-black">{budget.project_type}</p></div>
-            <div><p>Data</p><p className="text-black">{formatDateFull(budget.proposal_date)}</p></div>
+            <div className="min-w-0">
+              <p>{t.clientName}</p>
+              <p className="truncate text-black">{budget.client_name}</p>
+            </div>
+            <div className="min-w-0">
+              <p>{t.projectType}</p>
+              <p className="truncate text-black">{budget.project_type}</p>
+            </div>
+            <div>
+              <p>Data</p>
+              <p className="text-black">{formatDateFull(budget.proposal_date)}</p>
+            </div>
           </div>
         </section>
 
-        <Section title="About SIM"><p>A SIM é um estúdio audiovisual que combina linguagem cinematográfica, precisão comercial e execução premium para marcas, campanhas e experiências ao vivo.</p></Section>
-        <Section title="Scope"><p className="line-clamp-12">{budget.project_description || 'Produção audiovisual conforme briefing aprovado.'}</p></Section>
-        <Section title="Deliverables">
+        <Section title={t.aboutSim}>
+          <p>{t.aboutSimText}</p>
+        </Section>
+
+        <Section title={t.scopeLabel}>
+          <p className="line-clamp-12">{budget.project_description || 'Produção audiovisual conforme briefing aprovado.'}</p>
+        </Section>
+
+        <Section title={t.deliverablesLabel}>
           <div className="grid gap-3 md:grid-cols-2">
             {deliverables.map((item, i) => (
               <div key={item} className="flex items-center gap-3 border-t border-black/10 pt-3 text-black/65">
-                <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: segments[i % segments.length] }} />
+                <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: SEGMENTS[i % SEGMENTS.length] }} />
                 {item}
               </div>
             ))}
           </div>
         </Section>
-        <Section title="Schedule"><p>{budget.production.shooting_days} diária(s) de captação em {budget.production.city}. Transporte {budget.production.need_transportation ? 'incluído no escopo' : 'não solicitado'}. Hospedagem {budget.production.need_lodging ? 'incluída no escopo' : 'não solicitada'}.</p></Section>
-        <Section title="Investment">
+
+        <Section title={t.schedule}>
+          <p>
+            {budget.production.shooting_days} diária(s) de captação em {budget.production.city}. Tempo de entrega:{' '}
+            {budget.production.delivery_days} dias. Transporte {budget.production.need_transportation ? 'incluído no escopo' : 'não solicitado'}.
+            Hospedagem {budget.production.need_lodging ? 'incluída no escopo' : 'não solicitada'}.
+          </p>
+        </Section>
+
+        <Section title={t.investment}>
           <div className="rounded-2xl bg-noir-900 p-8 text-white md:p-12">
-            <p className="text-xs uppercase tracking-[0.3em] text-accent">Investimento Total</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-accent">{t.finalPriceLabel}</p>
             <p className="mt-4 truncate font-display text-5xl md:text-7xl">{formatCurrency(budget.final_price)}</p>
             <div className="mt-8 flex h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-              {segments.map((c) => (
+              {SEGMENTS.map((c) => (
                 <div key={c} className="h-full flex-1" style={{ backgroundColor: c }} />
               ))}
             </div>
             <div className="mt-8 space-y-2 text-xs text-white/40">
-              <p>Pagamento: 50% na aprovação e 50% na entrega final.</p>
-              <p>Validade: 30 dias até {formatDate(budget.expires_at)}</p>
+              <p>{t.paymentTermsText}</p>
+              <p>
+                {t.validityText.replace('30 dias', `${budget.production.delivery_days} dias`)} até {formatDate(budget.expires_at)}
+              </p>
             </div>
           </div>
         </Section>
@@ -92,5 +130,16 @@ export function ProposalPublic() {
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return <motion.section initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.7 }} className="grid gap-8 border-b border-black/10 py-16 md:grid-cols-[220px_1fr]"><h2 className="min-w-0 text-xs uppercase tracking-[0.34em] text-black/35">{title}</h2><div className="min-w-0 text-xl leading-9 text-black/70">{children}</div></motion.section>;
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 24 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ duration: 0.7 }}
+      className="grid min-w-0 gap-8 break-words border-b border-black/10 py-16 md:grid-cols-[220px_minmax(0,1fr)]"
+    >
+      <h2 className="shrink-0 text-xs uppercase tracking-[0.34em] text-black/35">{title}</h2>
+      <div className="min-w-0 text-xl leading-9 text-black/70">{children}</div>
+    </motion.section>
+  );
 }

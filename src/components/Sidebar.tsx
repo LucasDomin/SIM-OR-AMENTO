@@ -14,13 +14,14 @@ import {
 } from 'lucide-react';
 import { Logo } from './Logo';
 import { useAuth } from '../contexts/AuthContext';
+import { t } from '../lib/i18n';
 
 const navItems = [
-  { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/budgets', label: 'Orçamentos', icon: FileText },
-  { path: '/budgets/new', label: 'Novo Orçamento', icon: PlusCircle },
-  { path: '/templates', label: 'Templates', icon: Layers },
-  { path: '/price-list', label: 'Price List', icon: SlidersHorizontal },
+  { path: '/', label: t.dashboard, icon: LayoutDashboard },
+  { path: '/budgets', label: t.budgets, icon: FileText },
+  { path: '/budgets/new', label: t.newBudget, icon: PlusCircle },
+  { path: '/templates', label: t.templates, icon: Layers },
+  { path: '/price-list', label: t.priceList, icon: SlidersHorizontal },
 ];
 
 export function Sidebar() {
@@ -105,7 +106,7 @@ export function Sidebar() {
             className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium text-white/40 transition-all duration-200 hover:text-white/70 hover:bg-white/5"
           >
             <LogOut size={18} />
-            <span>Sair</span>
+            <span>{t.logout}</span>
           </button>
         </div>
       </motion.aside>

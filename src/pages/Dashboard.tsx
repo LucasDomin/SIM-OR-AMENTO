@@ -16,6 +16,7 @@ import { StatCard } from '../components/StatCard';
 import { BudgetStatusBadge } from '../components/BudgetStatusBadge';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, formatDate } from '../lib/utils';
+import { t } from '../lib/i18n';
 import type { Budget, DashboardStats } from '../types';
 
 export function Dashboard() {
@@ -53,9 +54,9 @@ export function Dashboard() {
   const recentBudgets = budgets.slice(0, 5);
 
   const quickActions = [
-    { label: 'Novo Orçamento', icon: Plus, path: '/budgets/new', color: 'bg-white text-sim-black' },
-    { label: 'Ver Todos', icon: FileText, path: '/budgets', color: 'bg-white/5 text-white' },
-    { label: 'Templates', icon: Clock, path: '/templates', color: 'bg-white/5 text-white' },
+    { label: t.newBudget, icon: Plus, path: '/budgets/new', color: 'bg-white text-sim-black' },
+    { label: t.viewAll, icon: FileText, path: '/budgets', color: 'bg-white/5 text-white' },
+    { label: t.templates, icon: Clock, path: '/templates', color: 'bg-white/5 text-white' },
   ];
 
   return (
@@ -68,7 +69,7 @@ export function Dashboard() {
           transition={{ duration: 0.5 }}
         >
           <h1 className="text-3xl font-display font-semibold text-white tracking-tight">
-            Dashboard
+            {t.dashboard}
           </h1>
           <p className="text-white/40 mt-1 text-sm">
             Visão geral dos seus orçamentos
@@ -78,26 +79,26 @@ export function Dashboard() {
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
-            title="Total de Orçamentos"
+            title={t.totalBudgets}
             value={stats.total_budgets}
             icon={FileText}
             delay={0.1}
           />
           <StatCard
-            title="Aprovados"
+            title={t.approved}
             value={stats.approved_budgets}
             icon={CheckCircle2}
             delay={0.2}
           />
           <StatCard
-            title="Receita Total"
+            title={t.totalRevenue}
             value={stats.total_revenue}
             isCurrency
             icon={DollarSign}
             delay={0.3}
           />
           <StatCard
-            title="Ticket Médio"
+            title={t.averageTicket}
             value={stats.average_ticket}
             isCurrency
             icon={TrendingUp}
@@ -112,7 +113,7 @@ export function Dashboard() {
           transition={{ delay: 0.3, duration: 0.5 }}
         >
           <h2 className="text-sm font-medium text-white/50 uppercase tracking-wider mb-4">
-            Ações Rápidas
+            {t.quickActions}
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {quickActions.map((action) => {
@@ -140,13 +141,13 @@ export function Dashboard() {
         >
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-medium text-white/50 uppercase tracking-wider">
-              Orçamentos Recentes
+              {t.recentBudgets}
             </h2>
             <button
               onClick={() => navigate('/budgets')}
               className="text-xs text-white/40 hover:text-white/70 transition-colors flex items-center gap-1"
             >
-              Ver todos <ArrowRight size={12} />
+              {t.viewAll} <ArrowRight size={12} />
             </button>
           </div>
 
@@ -159,12 +160,12 @@ export function Dashboard() {
           ) : recentBudgets.length === 0 ? (
             <div className="bg-sim-surface border border-sim-border rounded-xl p-8 text-center">
               <AlertCircle size={24} className="text-white/20 mx-auto mb-3" />
-              <p className="text-sm text-white/40">Nenhum orçamento criado ainda</p>
+              <p className="text-sm text-white/40">{t.noBudgetsYet}</p>
               <button
                 onClick={() => navigate('/budgets/new')}
                 className="mt-4 text-sm text-white/60 hover:text-white transition-colors"
               >
-                Criar primeiro orçamento
+                {t.createFirst}
               </button>
             </div>
           ) : (

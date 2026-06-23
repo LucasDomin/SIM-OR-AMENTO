@@ -2,20 +2,24 @@ import type {
   Budget,
   BudgetItem,
   Client,
+  EquipmentItem,
   PriceListItem,
+  ProfessionalItem,
+  ReelItem,
   SystemSettings,
   Template,
   User,
 } from '../types';
+import { calcSubtotal } from './calc';
 
 type TableName = 'users' | 'clients' | 'budgets' | 'budget_items' | 'price_list' | 'templates' | 'system_settings';
-type TableRecord = Budget | Client | BudgetItem | PriceListItem | Template | SystemSettings | User;
+type TableRecord = Budget | Client | BudgetItem | ReelItem | EquipmentItem | ProfessionalItem | PriceListItem | Template | SystemSettings | User;
 
 const STORAGE_KEYS: Record<TableName | 'auth', string> = {
   users: 'sim_users',
   clients: 'sim_clients',
-  budgets: 'sim_budgets',
-  budget_items: 'sim_budget_items',
+  budgets: 'sim_budgets_v2',
+  budget_items: 'sim_budget_items_v2',
   price_list: 'sim_price_list_2025',
   templates: 'sim_templates_v2',
   system_settings: 'sim_system_settings',
@@ -56,11 +60,15 @@ const defaultSettings: SystemSettings = {
   updated_at: new Date().toISOString(),
 };
 
+// Tabela mestra de preços 2025 — preço de venda × custo interno.
+// O cálculo é quantidade × sale_price. cost_price serve apenas para gestão.
 const priceSeed: Omit<PriceListItem, 'id' | 'active' | 'updated_at'>[] = [
+  // Pré Produção
   { category: 'Pré Produção', name: 'Roteiro', sale_price: 3200, cost_price: 1600 },
   { category: 'Pré Produção', name: 'Storyboard', sale_price: 2400, cost_price: 1200 },
   { category: 'Pré Produção', name: 'Produtor', sale_price: 2800, cost_price: 1500 },
   { category: 'Pré Produção', name: 'Produtor Executivo', sale_price: 5200, cost_price: 2800 },
+  // Produção
   { category: 'Produção', name: 'Diretor', sale_price: 4200, cost_price: 2000 },
   { category: 'Produção', name: 'Filmmaker', sale_price: 1200, cost_price: 900 },
   { category: 'Produção', name: 'Diretor de Fotografia', sale_price: 3800, cost_price: 2200 },
@@ -70,26 +78,30 @@ const priceSeed: Omit<PriceListItem, 'id' | 'active' | 'updated_at'>[] = [
   { category: 'Produção', name: 'Gaffer', sale_price: 2200, cost_price: 1400 },
   { category: 'Produção', name: 'Operador de Áudio', sale_price: 1800, cost_price: 1100 },
   { category: 'Produção', name: 'Drone / FPV', sale_price: 3200, cost_price: 1800 },
+  // Fotografia
   { category: 'Fotografia', name: 'Fotógrafo', sale_price: 2500, cost_price: 1500 },
   { category: 'Fotografia', name: 'Assistente de Fotografia', sale_price: 900, cost_price: 650 },
-  { category: 'Pós Produção', name: 'Edição', sale_price: 3600, cost_price: 2000 },
+  // Pós Produção
+  { category: 'Pós Produção', name: 'Edição de Vídeo', sale_price: 3600, cost_price: 2000 },
   { category: 'Pós Produção', name: 'Edição Sameday', sale_price: 4200, cost_price: 2600 },
   { category: 'Pós Produção', name: 'Motion', sale_price: 3200, cost_price: 1800 },
   { category: 'Pós Produção', name: 'VFX', sale_price: 5200, cost_price: 3000 },
+  // Reels (categoria independente com valor próprio)
+  { category: 'Reels', name: 'Edição de Reel', sale_price: 180, cost_price: 90 },
+  { category: 'Reels', name: 'Motion Design Reel', sale_price: 320, cost_price: 160 },
+  { category: 'Reels', name: 'Color Grading Reel', sale_price: 220, cost_price: 110 },
+  // Finalização
   { category: 'Finalização', name: 'Color Grading', sale_price: 2600, cost_price: 1500 },
   { category: 'Finalização', name: 'Sound Design', sale_price: 2200, cost_price: 1200 },
   { category: 'Finalização', name: 'Trilha', sale_price: 3000, cost_price: 1700 },
   { category: 'Finalização', name: 'Locução', sale_price: 1400, cost_price: 800 },
+  // Logística
   { category: 'Logística', name: 'Alimentação', sale_price: 650, cost_price: 500 },
   { category: 'Logística', name: 'Catering', sale_price: 1800, cost_price: 1300 },
   { category: 'Logística', name: 'Transporte Van', sale_price: 950, cost_price: 700 },
   { category: 'Logística', name: 'Transporte Uber', sale_price: 350, cost_price: 300 },
   { category: 'Logística', name: 'Hospedagem', sale_price: 850, cost_price: 650 },
-  { category: 'Equipamentos', name: 'Câmera', sale_price: 2200, cost_price: 1200 },
-  { category: 'Equipamentos', name: 'Lentes', sale_price: 1300, cost_price: 700 },
-  { category: 'Equipamentos', name: 'Iluminação', sale_price: 1800, cost_price: 1000 },
-  { category: 'Equipamentos', name: 'Elétrica e Maquinária', sale_price: 1600, cost_price: 950 },
-  { category: 'Equipamentos', name: 'Robô', sale_price: 4800, cost_price: 3000 },
+  // Extras
   { category: 'Extras', name: 'Verba Extra', sale_price: 2500, cost_price: 2500 },
   { category: 'Extras', name: 'Material Bruto', sale_price: 0, cost_price: 0 },
 ];
@@ -98,61 +110,73 @@ const templateSeed: Template[] = [
   {
     id: 'template-institucional',
     name: 'Institucional',
-    project_type: 'Institucional',
     description: 'Narrativa de marca com entrevistas, cenas de atmosfera e acabamento premium.',
-    production: { shooting_days: 2, city: 'São Paulo', need_transportation: true, need_lodging: false },
-    deliverables: { videos: 1, photos: 0, reels: 3, pilulas: 2, sameday: false, aftermovie: false, videocase: true },
-    price_item_names: ['Roteiro', 'Diretor', 'Filmmaker', 'Diretor de Fotografia', 'Câmera', 'Lentes', 'Iluminação', 'Edição', 'Color Grading', 'Sound Design'],
+    project_type: 'Institucional',
+    production: { shooting_days: 2, city: 'São Paulo', need_transportation: true, need_lodging: false, delivery_days: 20 },
+    service_names: ['Roteiro', 'Diretor', 'Filmmaker', 'Diretor de Fotografia', 'Câmera', 'Lentes', 'Iluminação', 'Edição de Vídeo', 'Color Grading', 'Sound Design'],
+    reel_names: ['Edição de Reel'],
+    equipment_names: ['Câmera', 'Lentes', 'Iluminação'],
+    professional_names: ['Diretor', 'Filmmaker', 'Diretor de Fotografia'],
     created_at: new Date().toISOString(),
   },
   {
     id: 'template-evento',
     name: 'Evento',
-    project_type: 'Evento',
     description: 'Cobertura de evento com captação multicâmera, fotografia e entrega social.',
-    production: { shooting_days: 1, city: 'São Paulo', need_transportation: true, need_lodging: false },
-    deliverables: { videos: 1, photos: 120, reels: 4, pilulas: 0, sameday: true, aftermovie: true, videocase: false },
-    price_item_names: ['Filmmaker', 'Filmmaker', 'Fotógrafo', 'Drone / FPV', 'Câmera', 'Edição Sameday', 'Edição', 'Transporte Van', 'Alimentação'],
+    project_type: 'Evento',
+    production: { shooting_days: 1, city: 'São Paulo', need_transportation: true, need_lodging: false, delivery_days: 5 },
+    service_names: ['Edição Sameday', 'Edição de Vídeo', 'Transporte Van', 'Alimentação'],
+    reel_names: ['Edição de Reel', 'Edição de Reel'],
+    equipment_names: ['Câmera', 'Iluminação'],
+    professional_names: ['Filmmaker', 'Fotógrafo'],
     created_at: new Date().toISOString(),
   },
   {
     id: 'template-publicidade',
     name: 'Publicidade',
-    project_type: 'Publicidade',
     description: 'Campanha com direção criativa, produção robusta e pós-produção completa.',
-    production: { shooting_days: 2, city: 'São Paulo', need_transportation: true, need_lodging: false },
-    deliverables: { videos: 2, photos: 30, reels: 5, pilulas: 4, sameday: false, aftermovie: false, videocase: false },
-    price_item_names: ['Roteiro', 'Storyboard', 'Produtor Executivo', 'Produtor', 'Diretor', 'Diretor de Fotografia', 'Assistente de Câmera', 'Gaffer', 'Fotógrafo', 'Câmera', 'Lentes', 'Iluminação', 'Edição', 'Motion', 'Color Grading', 'Sound Design'],
+    project_type: 'Publicidade',
+    production: { shooting_days: 2, city: 'São Paulo', need_transportation: true, need_lodging: false, delivery_days: 25 },
+    service_names: ['Roteiro', 'Storyboard', 'Produtor Executivo', 'Produtor', 'Diretor', 'Diretor de Fotografia', 'Assistente de Câmera', 'Gaffer', 'Câmera', 'Lentes', 'Iluminação', 'Edição de Vídeo', 'Motion', 'Color Grading', 'Sound Design'],
+    reel_names: ['Edição de Reel', 'Motion Design Reel'],
+    equipment_names: ['Câmera', 'Lentes', 'Iluminação'],
+    professional_names: ['Diretor', 'Diretor de Fotografia', 'Filmmaker'],
     created_at: new Date().toISOString(),
   },
   {
     id: 'template-podcast',
     name: 'Podcast',
-    project_type: 'Podcast',
     description: 'Captação multicâmera com áudio dedicado e edição para episódio completo e cortes.',
-    production: { shooting_days: 1, city: 'São Paulo', need_transportation: true, need_lodging: false },
-    deliverables: { videos: 1, photos: 0, reels: 6, pilulas: 6, sameday: false, aftermovie: false, videocase: false },
-    price_item_names: ['Filmmaker', 'Operador de Áudio', 'Câmera', 'Câmera', 'Iluminação', 'Edição', 'Sound Design'],
+    project_type: 'Podcast',
+    production: { shooting_days: 1, city: 'São Paulo', need_transportation: true, need_lodging: false, delivery_days: 7 },
+    service_names: ['Edição de Vídeo', 'Sound Design'],
+    reel_names: ['Edição de Reel'],
+    equipment_names: ['Câmera', 'Iluminação'],
+    professional_names: ['Filmmaker', 'Operador de Áudio'],
     created_at: new Date().toISOString(),
   },
   {
     id: 'template-reels',
     name: 'Reels',
-    project_type: 'Reels',
     description: 'Produção vertical enxuta com ritmo editorial e entrega rápida.',
-    production: { shooting_days: 1, city: 'São Paulo', need_transportation: false, need_lodging: false },
-    deliverables: { videos: 0, photos: 0, reels: 6, pilulas: 0, sameday: false, aftermovie: false, videocase: false },
-    price_item_names: ['Filmmaker', 'Fotógrafo', 'Câmera', 'Edição', 'Motion', 'Transporte Uber'],
+    project_type: 'Reels',
+    production: { shooting_days: 1, city: 'São Paulo', need_transportation: false, need_lodging: false, delivery_days: 3 },
+    service_names: ['Edição de Vídeo', 'Motion', 'Transporte Uber'],
+    reel_names: ['Edição de Reel', 'Edição de Reel', 'Edição de Reel', 'Edição de Reel', 'Edição de Reel', 'Edição de Reel'],
+    equipment_names: ['Câmera'],
+    professional_names: ['Filmmaker', 'Fotógrafo'],
     created_at: new Date().toISOString(),
   },
   {
     id: 'template-cobertura',
     name: 'Cobertura',
-    project_type: 'Cobertura',
     description: 'Cobertura documental com fotografia, vídeo e pacote de redes sociais.',
-    production: { shooting_days: 1, city: 'São Paulo', need_transportation: true, need_lodging: false },
-    deliverables: { videos: 1, photos: 80, reels: 3, pilulas: 0, sameday: false, aftermovie: true, videocase: false },
-    price_item_names: ['Filmmaker', 'Fotógrafo', 'Drone / FPV', 'Câmera', 'Edição', 'Color Grading', 'Transporte Van', 'Alimentação'],
+    project_type: 'Cobertura',
+    production: { shooting_days: 1, city: 'São Paulo', need_transportation: true, need_lodging: false, delivery_days: 7 },
+    service_names: ['Edição de Vídeo', 'Color Grading', 'Transporte Van', 'Alimentação'],
+    reel_names: ['Edição de Reel'],
+    equipment_names: ['Câmera'],
+    professional_names: ['Filmmaker', 'Fotógrafo'],
     created_at: new Date().toISOString(),
   },
 ];
@@ -163,26 +187,6 @@ export function getSettings(): SystemSettings {
 
 export function getPriceList(): PriceListItem[] {
   return getStorage<PriceListItem[]>(STORAGE_KEYS.price_list, []);
-}
-
-export function calculateBudget(items: BudgetItem[], settings: SystemSettings = getSettings()) {
-  const hasMaterialBruto = items.some((item) => item.name.toLowerCase() === 'material bruto');
-  const baseCost = items.reduce((sum, item) => {
-    if (item.name.toLowerCase() === 'material bruto') return sum;
-    return sum + item.quantity * item.cost_price;
-  }, 0);
-  const feeRate = settings.fee_percentage / 100;
-  const taxRate = settings.tax_percentage / 100;
-  const grossMultiplier = (1 + feeRate) / (1 - taxRate);
-  const cost_total = hasMaterialBruto ? baseCost / (1 - 0.2 * grossMultiplier) : baseCost;
-  const material_bruto_value = hasMaterialBruto ? Math.max(0, cost_total - baseCost) : 0;
-  const fee_value = cost_total * feeRate;
-  const final_price = (cost_total + fee_value) / (1 - taxRate);
-  const tax_value = final_price - (cost_total + fee_value);
-  const profit = fee_value;
-  const margin = final_price > 0 ? profit / final_price : 0;
-
-  return { cost_total, fee_value, final_price, tax_value, profit, margin, material_bruto_value };
 }
 
 function tableKey(table: string) {
@@ -208,20 +212,28 @@ function normalizeBudget(raw: Budget): Budget {
   const now = new Date().toISOString();
   const expires = raw.expires_at || raw.expiration_date || now;
   const status = raw.status !== 'Approved' && raw.status !== 'Rejected' && expires < now ? 'Expired' : raw.status;
-  const items = (raw.items || []).map((item) => ({
-    ...item,
-    sale_price: item.sale_price ?? item.unit_price ?? 0,
-    cost_price: item.cost_price ?? item.unit_price ?? 0,
-    subtotal_sale: item.subtotal_sale ?? item.subtotal ?? (item.quantity || 0) * (item.unit_price || 0),
-    subtotal_cost: item.subtotal_cost ?? item.subtotal ?? (item.quantity || 0) * (item.unit_price || 0),
-    custom_pricing: item.custom_pricing ?? false,
-  }));
   return {
     ...raw,
-    client_whatsapp: raw.client_whatsapp || raw.client_phone || '',
-    project_type: raw.project_type || (raw.type === 'Publi' ? 'Publicidade' : raw.type === 'Guerrilha' ? 'Cobertura' : 'Personalizado'),
-    production: raw.production || { shooting_days: 1, city: 'São Paulo', need_transportation: false, need_lodging: false },
-    deliverables: raw.deliverables || { videos: 1, photos: 0, reels: 0, pilulas: 0, sameday: false, aftermovie: false, videocase: false },
+    services: (raw.services || []).map((item) => ({
+      ...item,
+      subtotal: item.subtotal ?? calcSubtotal(item),
+    })),
+    reels: (raw.reels || []).map((item) => ({
+      ...item,
+      subtotal: item.subtotal ?? calcSubtotal(item),
+    })),
+    equipment: (raw.equipment || []).map((item) => ({
+      ...item,
+      subtotal: item.subtotal ?? (item.daily_rate || 0) * (item.days || 0),
+    })),
+    professionals: (raw.professionals || []).map((item) => ({
+      ...item,
+      subtotal: item.subtotal ?? (item.daily_rate || 0) * (item.days || 0),
+    })),
+    production: {
+      ...raw.production,
+      delivery_days: raw.production?.delivery_days ?? 15,
+    },
     updated_at: raw.updated_at || raw.created_at,
     expires_at: expires,
     expiration_date: expires,
@@ -229,7 +241,8 @@ function normalizeBudget(raw: Budget): Budget {
     online_slug: raw.online_slug || raw.id,
     material_bruto_value: raw.material_bruto_value || 0,
     status,
-    items,
+    items: raw.items || raw.services || [],
+    deliverables: raw.deliverables || { videos: 0, photos: 0, reels: 0, pilulas: 0, sameday: false, aftermovie: false, videocase: false },
   };
 }
 
@@ -241,7 +254,7 @@ function seed() {
     const now = new Date().toISOString();
     setStorage(
       STORAGE_KEYS.price_list,
-      priceSeed.map((item) => ({ ...item, id: generateId(), active: true, updated_at: now }))
+      priceSeed.map((item) => ({ ...item, id: generateId(), active: true, updated_at: now })),
     );
   }
   if (getStorage<Template[]>(STORAGE_KEYS.templates, []).length === 0) {
@@ -252,38 +265,59 @@ function seed() {
   }
   if (getStorage<Budget[]>(STORAGE_KEYS.budgets, []).length === 0) {
     const prices = getStorage<PriceListItem[]>(STORAGE_KEYS.price_list, []);
-    const names = ['Roteiro', 'Diretor', 'Diretor de Fotografia', 'Filmmaker', 'Fotógrafo', 'Câmera', 'Lentes', 'Iluminação', 'Edição', 'Color Grading', 'Sound Design', 'Material Bruto'];
-    const budgetId = 'demo-premium-2025';
-    const created = new Date();
-    const expires = new Date(created);
+    const find = (name: string) => prices.find((p) => p.name === name);
+    const now = new Date();
+    const expires = new Date(now);
     expires.setDate(expires.getDate() + defaultSettings.proposal_validity_days);
-    const items: BudgetItem[] = names
-      .map((name) => prices.find((price) => price.name === name))
+
+    const servicesRaw: Array<{ name: string; category: string }> = [
+      { name: 'Roteiro', category: 'Pré Produção' },
+      { name: 'Diretor', category: 'Produção' },
+      { name: 'Filmmaker', category: 'Produção' },
+      { name: 'Diretor de Fotografia', category: 'Produção' },
+      { name: 'Câmera', category: 'Equipamentos' },
+      { name: 'Lentes', category: 'Equipamentos' },
+      { name: 'Iluminação', category: 'Equipamentos' },
+      { name: 'Edição de Vídeo', category: 'Pós Produção' },
+      { name: 'Color Grading', category: 'Finalização' },
+      { name: 'Sound Design', category: 'Finalização' },
+      { name: 'Material Bruto', category: 'Extras' },
+    ];
+
+    const services: BudgetItem[] = servicesRaw
+      .map((s) => find(s.name))
       .filter(Boolean)
-      .map((price) => {
-        const p = price as PriceListItem;
-        return {
-          id: generateId(),
-          budget_id: budgetId,
-          price_list_id: p.id,
-          category: p.category,
-          name: p.name,
-          quantity: 1,
-          sale_price: p.sale_price,
-          cost_price: p.cost_price,
-          subtotal_sale: p.sale_price,
-          subtotal_cost: p.cost_price,
-          custom_pricing: false,
-          unit_price: p.sale_price,
-          subtotal: p.cost_price,
-        };
-      });
-    const financials = calculateBudget(items, defaultSettings);
-    const hydratedItems = items.map((item) => item.name === 'Material Bruto'
-      ? { ...item, sale_price: financials.material_bruto_value, cost_price: financials.material_bruto_value, subtotal_sale: financials.material_bruto_value, subtotal_cost: financials.material_bruto_value, unit_price: financials.material_bruto_value, subtotal: financials.material_bruto_value }
-      : item);
-    setStorage<Budget[]>(STORAGE_KEYS.budgets, [{
-      id: budgetId,
+      .map((p) => ({
+        id: generateId(),
+        budget_id: 'demo-premium-2025',
+        price_list_id: p!.id,
+        category: p!.category,
+        name: p!.name,
+        quantity: 1,
+        unit_price: p!.sale_price,
+        cost_price: p!.cost_price,
+        subtotal: p!.sale_price,
+        custom_pricing: false,
+      }));
+
+    const reels: ReelItem[] = [
+      { id: generateId(), name: 'Edição de Reel', quantity: 3, unit_price: find('Edição de Reel')?.sale_price || 180, cost_price: find('Edição de Reel')?.cost_price || 90, subtotal: 0 },
+    ].map((r) => ({ ...r, subtotal: r.quantity * r.unit_price }));
+
+    const equipment: EquipmentItem[] = [
+      { id: generateId(), name: 'Câmera', daily_rate: 2200, days: 2, pickup_date: undefined, return_date: undefined, cost_price: 1200, subtotal: 4400 },
+      { id: generateId(), name: 'Lentes', daily_rate: 1300, days: 2, pickup_date: undefined, return_date: undefined, cost_price: 700, subtotal: 2600 },
+      { id: generateId(), name: 'Iluminação', daily_rate: 1800, days: 2, pickup_date: undefined, return_date: undefined, cost_price: 1000, subtotal: 3600 },
+    ];
+
+    const professionals: ProfessionalItem[] = [
+      { id: generateId(), name: 'Diretor', daily_rate: 4200, days: 2, cost_price: 2000, subtotal: 8400 },
+      { id: generateId(), name: 'Filmmaker', daily_rate: 1200, days: 2, cost_price: 900, subtotal: 2400 },
+      { id: generateId(), name: 'Diretor de Fotografia', daily_rate: 3800, days: 2, cost_price: 2200, subtotal: 7600 },
+    ];
+
+    const demo: Budget = {
+      id: 'demo-premium-2025',
       client_id: 'client-demo-premium',
       client_name: 'Marina Rocha',
       client_company: 'Rocha Studio',
@@ -291,22 +325,40 @@ function seed() {
       client_email: 'marina@rochastudio.com',
       project_name: 'Manifesto Rocha Studio',
       project_type: 'Institucional',
-      project_description: 'Filme manifesto com linguagem cinematográfica, entrevistas e imagens de processo para lançamento de nova identidade.',
-      production: { shooting_days: 2, city: 'São Paulo', need_transportation: true, need_lodging: false },
-      deliverables: { videos: 1, photos: 24, reels: 3, pilulas: 2, sameday: false, aftermovie: false, videocase: true },
+      project_description:
+        'Filme manifesto com linguagem cinematográfica, entrevistas e imagens de processo para lançamento de nova identidade.',
+      production: {
+        shooting_days: 2,
+        city: 'São Paulo',
+        need_transportation: true,
+        need_lodging: false,
+        delivery_days: 20,
+        start_date: undefined,
+      },
+      services,
+      reels,
+      equipment,
+      professionals,
       status: 'Sent',
-      created_at: created.toISOString(),
-      updated_at: created.toISOString(),
+      created_at: now.toISOString(),
+      updated_at: now.toISOString(),
       expires_at: expires.toISOString(),
       expiration_date: expires.toISOString(),
-      proposal_date: created.toISOString(),
+      proposal_date: now.toISOString(),
       online_slug: 'manifesto-rocha-studio-demo',
-      ...financials,
-      items: hydratedItems,
+      cost_total: 0,
+      fee_value: 0,
+      tax_value: 0,
+      final_price: 0,
+      profit: 0,
+      margin: 0,
+      material_bruto_value: 0,
       type: 'Institucional',
-      budget_date: created.toISOString(),
+      budget_date: now.toISOString(),
       client_phone: '(11) 98888-2025',
-    }]);
+    };
+
+    setStorage(STORAGE_KEYS.budgets, [demo]);
   }
 }
 

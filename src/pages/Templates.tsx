@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { supabase } from '../lib/supabase';
+import { t } from '../lib/i18n';
 import type { PriceListItem, Template } from '../types';
 
 const iconMap: Record<string, React.ElementType> = {
@@ -58,10 +59,10 @@ export function Templates() {
           className="min-w-0"
         >
           <h1 className="truncate text-3xl font-display font-semibold tracking-tight text-white">
-            Templates
+            {t.templatesTitle}
           </h1>
           <p className="mt-1 text-sm text-white/40">
-            Modelos pré-configurados para acelerar a criação de orçamentos
+            {t.templatesSubtitle}
           </p>
         </motion.div>
 
@@ -75,10 +76,10 @@ export function Templates() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {templates.map((template, index) => {
               const Icon = iconMap[template.id] || Layers;
-              const totalValue = template.price_item_names?.reduce((sum, name) => {
+              const totalValue = (template.service_names || []).reduce((sum: number, name: string) => {
                 const price = priceList.find((item) => item.name === name);
                 return sum + (price?.sale_price || 0);
-              }, 0) || (template.items || []).reduce((sum, item) => sum + item.quantity * (item.unit_price || item.sale_price || 0), 0);
+              }, 0);
 
               return (
                 <motion.div
@@ -106,7 +107,12 @@ export function Templates() {
 
                   <div className="flex items-center justify-between border-t border-white/5 pt-4">
                     <div className="min-w-0">
-                      <p className="truncate text-xs text-white/30">{template.price_item_names?.length || template.items?.length || 0} itens</p>
+                      <p className="truncate text-xs text-white/30">
+                        {(template.service_names?.length || 0) +
+                          (template.reel_names?.length || 0) +
+                          (template.equipment_names?.length || 0) +
+                          (template.professional_names?.length || 0)} {t.items}
+                      </p>
                       <p className="truncate text-sm font-medium text-white">
                         {new Intl.NumberFormat('pt-BR', {
                           style: 'currency',
@@ -119,7 +125,7 @@ export function Templates() {
                       className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-white/5 px-4 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-white hover:text-sim-black"
                     >
                       <Play size={14} />
-                      Usar
+                      {t.useTemplate}
                     </button>
                   </div>
                 </motion.div>

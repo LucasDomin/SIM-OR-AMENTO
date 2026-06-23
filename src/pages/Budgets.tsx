@@ -14,6 +14,7 @@ import { Layout } from '../components/Layout';
 import { BudgetStatusBadge } from '../components/BudgetStatusBadge';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, formatDate } from '../lib/utils';
+import { t } from '../lib/i18n';
 import type { Budget } from '../types';
 
 export function Budgets() {
@@ -34,7 +35,7 @@ export function Budgets() {
   }
 
   async function deleteBudget(id: string) {
-    if (!confirm('Tem certeza que deseja excluir este orçamento?')) return;
+    if (!confirm(t.confirmDelete)) return;
     await supabase.from('budgets').delete().eq('id', id);
     loadBudgets();
   }
@@ -52,7 +53,7 @@ export function Budgets() {
     return matchesSearch && matchesStatus;
   });
 
-  const statuses = ['all', 'Draft', 'Sent', 'Approved', 'Rejected', 'Expired'];
+  const statuses = ['all', 'Draft', 'Sent', 'Approved', 'Rejected', 'Expired'] as const;
 
   return (
     <Layout>
@@ -66,10 +67,10 @@ export function Budgets() {
         >
           <div className="min-w-0">
             <h1 className="truncate text-3xl font-display font-semibold tracking-tight text-white">
-              Orçamentos
+              {t.budgets}
             </h1>
             <p className="mt-1 text-sm text-white/40">
-              {budgets.length} orçamento{budgets.length !== 1 ? 's' : ''} no sistema
+              {budgets.length} {budgets.length === 1 ? 'orçamento' : 'orçamentos'} no sistema
             </p>
           </div>
           <button
@@ -77,7 +78,7 @@ export function Budgets() {
             className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-white px-5 py-2.5 text-sm font-medium text-sim-black transition-colors hover:bg-white/90"
           >
             <Plus size={16} />
-            Novo Orçamento
+            {t.newBudget}
           </button>
         </motion.div>
 
@@ -94,7 +95,7 @@ export function Budgets() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por projeto, cliente ou empresa..."
+              placeholder={t.searchBudgets}
               className="w-full rounded-lg border border-sim-border bg-sim-surface pl-10 pr-4 py-2.5 text-sm text-white placeholder-white/30 transition-all focus:border-white/30"
             />
           </div>
@@ -110,7 +111,7 @@ export function Budgets() {
                     : 'text-white/40 hover:text-white/70 hover:bg-white/5'
                 }`}
               >
-                {s === 'all' ? 'Todos' : s}
+                {s === 'all' ? 'Todos' : t.status[s as keyof typeof t.status] || s}
               </button>
             ))}
           </div>
@@ -127,9 +128,7 @@ export function Budgets() {
           <div className="rounded-xl border border-sim-border bg-sim-surface p-12 text-center">
             <AlertCircle size={32} className="mx-auto mb-4 text-white/20" />
             <p className="text-sm text-white/40">
-              {search || statusFilter !== 'all'
-                ? 'Nenhum orçamento encontrado com os filtros aplicados'
-                : 'Nenhum orçamento criado ainda'}
+              {search || statusFilter !== 'all' ? t.noBudgetsFound : t.noBudgetsYet}
             </p>
           </div>
         ) : (
@@ -163,7 +162,7 @@ export function Budgets() {
                       <span className="text-white/20">•</span>
                       <span className="shrink-0">{formatDate(budget.created_at)}</span>
                       <span className="text-white/20">•</span>
-                      <span className="shrink-0">Expira em {formatDate(budget.expires_at || budget.expiration_date || budget.created_at)}</span>
+                        <span className="shrink-0">Expira em {formatDate(budget.expires_at || budget.expiration_date || budget.created_at)}</span>
                     </div>
                   </button>
                   <div className="flex shrink-0 items-center gap-2">
@@ -172,7 +171,7 @@ export function Budgets() {
                         {formatCurrency(budget.final_price)}
                       </p>
                       <p className="text-xs text-white/30">
-                        {budget.items.length} itens
+                        {budget.services.length + budget.reels.length + budget.equipment.length + budget.professionals.length} itens
                       </p>
                     </div>
                     <button
