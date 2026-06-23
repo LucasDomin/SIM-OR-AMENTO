@@ -3,343 +3,494 @@ import { getLogoDataUrl } from './logoImage';
 import { formatCurrency } from './supabase';
 import { formatDate } from './utils';
 import { formatPercent } from './calc';
-import { t } from './i18n';
 
 const SEGMENTS = ['#996EA7', '#E45A58', '#EA8D11', '#FAC421', '#33AE74', '#2894D1', '#B1B7B1', '#F4C78D', '#8B5A2B'];
 
-interface PdfContext {
-  doc: import('jspdf').default;
-  width: number;
-  height: number;
-  margin: number;
-  y: number;
-  clientOnly: boolean;
+// Paleta
+const INK = { r: 17, g: 17, b: 17 };
+const MUTED = { r: 120, g: 120, b: 120 };
+const LIGHT = { r: 150, g: 150, b: 150 };
+const HAIRLINE = { r: 228, g: 228, b: 228 };
+const SOFT_BG = { r: 248, g: 247, b: 245 };
+const GREEN = { r: 51, g: 130, b: 90 };
+
+type Doc = import('jspdf').default;
+
+interface SectionItem {
+  name: string;
+  meta: string;
+  cost: number; // custo total (interno)
+  value: number; // valor cobrado do cliente
 }
 
 export async function generateProposalPDF(budget: Budget, settings: SystemSettings, clientOnly: boolean) {
   const { default: jsPDF } = await import('jspdf');
   const doc = new jsPDF();
-  const width = doc.internal.pageSize.getWidth();
-  const height = doc.internal.pageSize.getHeight();
-  const margin = 20;
-  let y = margin;
+  const W = doc.internal.pageSize.getWidth();
+  const H = doc.internal.pageSize.getHeight();
+  const M = 18;
+  let y = M;
 
-  function ensure(needed: number) {
-    if (y + needed > height - margin) {
+  const ensure = (need: number) => {
+    if (y + need > H - M - 14) {
+      footer(doc, W, H, M);
       doc.addPage();
-      y = margin;
+      y = M;
     }
-  }
+  };
 
+  // ---------- CABEÇALHO ----------
   const logoImg = await getLogoDataUrl(4);
-
-  // Header com logo 25% menor
   if (logoImg) {
-    doc.addImage(logoImg, 'PNG', margin, y - 2, 90, 26);
-    y += 30;
+    // Logo menor (60 × 17mm)
+    doc.addImage(logoImg, 'PNG', M, y, 60, 17);
   } else {
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(28);
-    doc.text('SIM', margin, y + 10);
-    y += 20;
+    doc.setFontSize(22);
+    setColor(doc, INK);
+    doc.text('SIM', M, y + 12);
   }
 
-  doc.setTextColor(110, 110, 110);
-  doc.setFontSize(9);
+  // Etiqueta no canto direito
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  setColor(doc, MUTED);
+  doc.text(clientOnly ? 'PROPOSTA COMERCIAL' : 'ORÇAMENTO INTERNO', W - M, y + 5, { align: 'right' });
   doc.setFont('helvetica', 'normal');
-  doc.text(clientOnly ? 'PROPOSTA COMERCIAL' : 'ORÇAMENTO INTERNO', width - margin, y - 10, { align: 'right' });
-  doc.text(formatDate(budget.proposal_date), width - margin, y - 4, { align: 'right' });
+  setColor(doc, LIGHT);
+  doc.text(formatDate(budget.proposal_date), W - M, y + 11, { align: 'right' });
 
-  // Title
-  y += 6;
-  doc.setTextColor(10, 10, 10);
+  y += 24;
+  hairline(doc, M, y, W - M);
+  y += 12;
+
+  // ---------- TÍTULO + CLIENTE ----------
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(17);
+  setColor(doc, INK);
+  const titleLines = doc.splitTextToSize(budget.project_name, W - M * 2);
+  doc.text(titleLines, M, y);
+  y += titleLines.length * 7 + 2;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9.5);
+  setColor(doc, MUTED);
+  doc.text(
+    `${budget.client_name}${budget.client_company ? '  ·  ' + budget.client_company : ''}  ·  ${budget.project_type}`,
+    M,
+    y,
+  );
+  y += 12;
+
+  // ---------- DADOS RÁPIDOS (3 colunas) ----------
+  const facts: Array<[string, string]> = [
+    ['CONTATO', `${budget.client_email || '—'}`],
+    ['WHATSAPP', `${budget.client_whatsapp || '—'}`],
+    ['CIDADE', budget.production.city],
+    ['TEMPO DE ENTREGA', `${budget.production.delivery_days} dias`],
+    ['VALIDADE', `${settings.proposal_validity_days} dias`],
+    ['VÁLIDO ATÉ', formatDate(budget.expires_at)],
+  ];
+  y = drawFactsGrid(doc, facts, M, y, W);
+  y += 10;
+
+  // ---------- ESCOPO ----------
+  if (budget.project_description) {
+    ensure(30);
+    y = sectionTitle(doc, 'ESCOPO', M, y, W);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9.5);
+    setColor(doc, { r: 70, g: 70, b: 70 });
+    const lines = doc.splitTextToSize(budget.project_description, W - M * 2);
+    lines.forEach((line: string) => {
+      ensure(6);
+      doc.text(line, M, y);
+      y += 5.4;
+    });
+    y += 8;
+  }
+
+  // ---------- MONTAR SEÇÕES ----------
+  const sections: Array<{ title: string; items: SectionItem[] }> = [];
+
+  if (budget.professionals.length) {
+    sections.push({
+      title: 'EQUIPE',
+      items: budget.professionals.map((p) => ({
+        name: p.name,
+        meta: `${p.days} diária(s) × ${formatCurrency(p.daily_rate)}`,
+        cost: p.cost_price * p.days,
+        value: p.subtotal,
+      })),
+    });
+  }
+  if (budget.equipment.length) {
+    sections.push({
+      title: 'EQUIPAMENTOS',
+      items: budget.equipment.map((e) => ({
+        name: e.name,
+        meta: `${e.days} diária(s) × ${formatCurrency(e.daily_rate)}`,
+        cost: e.cost_price * e.days,
+        value: e.subtotal,
+      })),
+    });
+  }
+  if (budget.services.length) {
+    sections.push({
+      title: 'SERVIÇOS',
+      items: budget.services.map((s) => ({
+        name: s.name,
+        meta: `${s.quantity} × ${formatCurrency(s.unit_price)}`,
+        cost: s.cost_price * s.quantity,
+        value: s.subtotal,
+      })),
+    });
+  }
+  if (budget.reels.length) {
+    sections.push({
+      title: 'REELS',
+      items: budget.reels.map((r) => ({
+        name: r.name,
+        meta: `${r.quantity} × ${formatCurrency(r.unit_price)}`,
+        cost: r.cost_price * r.quantity,
+        value: r.subtotal,
+      })),
+    });
+  }
+
+  // ---------- RENDERIZAR SEÇÕES ----------
+  sections.forEach((section) => {
+    ensure(26);
+    y = sectionTitle(doc, `${section.title}`, M, y, W);
+    y = clientOnly
+      ? drawClientTable(doc, section.items, M, y, W, ensure)
+      : drawInternalTable(doc, section.items, M, y, W, ensure);
+    y += 8;
+  });
+
+  // ---------- TOTAL GERAL ----------
+  ensure(46);
+  y += 2;
+  const boxH = clientOnly ? 34 : 40;
+  setFill(doc, INK);
+  doc.roundedRect(M, y, W - M * 2, boxH, 2.5, 2.5, 'F');
+
+  // Barra de cores no rodapé do bloco
+  const barY = y + boxH - 4;
+  const barW = W - M * 2 - 20;
+  const segW = barW / SEGMENTS.length;
+  SEGMENTS.forEach((c, i) => {
+    setFillHex(doc, c);
+    doc.rect(M + 10 + i * segW, barY, segW + 0.4, 2, 'F');
+  });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  setColorHex(doc, '#D4C5A9');
+  doc.text('INVESTIMENTO TOTAL', M + 12, y + 12);
+
+  // Valor do investimento — reduzido
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(20);
-  const titleLines = doc.splitTextToSize(budget.project_name.toUpperCase(), width - margin * 2);
-  doc.text(titleLines, margin, y);
-  y += titleLines.length * 8 + 4;
+  setColor(doc, { r: 255, g: 255, b: 255 });
+  doc.text(formatCurrency(budget.final_price), M + 12, y + 23);
 
-  const ctx: PdfContext = { doc, width, height, margin, y, clientOnly };
-
-  // Informações Gerais
-  y = drawGeneralInfo(doc, budget, ctx);
-  // Escopo
-  y = drawScope(doc, budget, { ...ctx, y });
-  // Profissionais
-  y = drawSection(
-    doc,
-    'PROFISSIONAIS',
-    budget.professionals,
-    { ...ctx, y },
-    (p) => [p.name, `${p.days} diária(s) · ${formatCurrency(p.daily_rate)}`],
-    (p) => formatCurrency(p.subtotal),
-  );
-  // Equipamentos
-  y = drawSection(
-    doc,
-    'EQUIPAMENTOS',
-    budget.equipment,
-    { ...ctx, y },
-    (e) => {
-      const lines = [`${e.days} diária(s) · ${formatCurrency(e.daily_rate)}`];
-      if (e.pickup_date) lines.push(`Retirada: ${formatDate(e.pickup_date)}`);
-      if (e.return_date) lines.push(`Devolução: ${formatDate(e.return_date)}`);
-      return [e.name, ...lines];
-    },
-    (e) => formatCurrency(e.subtotal),
-  );
-  // Serviços
-  y = drawSection(
-    doc,
-    'SERVIÇOS',
-    budget.services,
-    { ...ctx, y },
-    (s) => [s.name, `${s.quantity} × ${formatCurrency(s.unit_price)}`],
-    (s) => formatCurrency(s.subtotal),
-  );
-  // Reels
-  if (budget.reels.length > 0) {
-    y = drawSection(
-      doc,
-      'REELS',
-      budget.reels,
-      { ...ctx, y },
-      (r) => [r.name, `${r.quantity} × ${formatCurrency(r.unit_price)}`],
-      (r) => formatCurrency(r.subtotal),
-    );
-  }
-  // Cronograma
-  y = drawSchedule(doc, budget, { ...ctx, y });
-
-  // TOTAL GERAL - destaque máximo
-  ensure(60);
-  ctx.y = y;
-  ensure(60);
-  y = ctx.y + 6;
-
-  doc.setFillColor(10, 10, 10);
-  doc.roundedRect(margin, y, width - margin * 2, 52, 3, 3, 'F');
-
-  // Barra colorida
-  const barTop = y + 44;
-  const barLeft = margin + 10;
-  const barWidth = width - margin * 2 - 20;
-  const segW = barWidth / SEGMENTS.length;
-  SEGMENTS.forEach((color, i) => {
-    doc.setFillColor(color);
-    doc.rect(barLeft + i * segW, barTop, segW + 0.4, 2.5, 'F');
-  });
-
-  doc.setTextColor(212, 197, 169);
-  doc.setFontSize(9);
+  // Breakdown à direita
   doc.setFont('helvetica', 'normal');
-  doc.text('TOTAL GERAL', margin + 10, y + 14);
+  doc.setFontSize(7.5);
+  setColor(doc, { r: 175, g: 175, b: 175 });
+  const bdX = W - M - 12;
+  doc.text(`Subtotal  ${formatCurrency(budget.cost_total)}`, bdX, y + 10, { align: 'right' });
+  doc.text(`Fee (${settings.fee_percentage}%)  ${formatCurrency(budget.fee_value)}`, bdX, y + 16, { align: 'right' });
+  doc.text(`Impostos (${settings.tax_percentage}%)  ${formatCurrency(budget.tax_value)}`, bdX, y + 22, { align: 'right' });
 
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(28);
-  doc.setFont('helvetica', 'bold');
-  doc.text(formatCurrency(budget.final_price), margin + 10, y + 32);
+  y += boxH + 8;
 
-  // Detalhamento do cálculo
-  doc.setFontSize(9);
+  // ---------- CONDIÇÕES ----------
+  ensure(16);
   doc.setFont('helvetica', 'normal');
-  doc.setTextColor(180, 180, 180);
-  const calcDetail = `Subtotal ${formatCurrency(budget.cost_total)} + Fee ${formatCurrency(budget.fee_value)} + Impostos ${formatCurrency(budget.tax_value)}`;
-  doc.text(calcDetail, margin + 10, y + 42);
-
-  // Condições
-  y += 64;
-  doc.setTextColor(95, 95, 95);
   doc.setFontSize(8);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`Proposta válida por ${settings.proposal_validity_days} dias · até ${formatDate(budget.expires_at)}`, margin, y);
-  doc.text('Condições: 50% no aceite do orçamento e 50% na entrega final.', margin, y + 4);
+  setColor(doc, MUTED);
+  doc.text('Condições de pagamento: 50% no aceite do orçamento e 50% na entrega final.', M, y);
+  y += 5;
+  doc.text(`Esta proposta é válida por ${settings.proposal_validity_days} dias após a emissão.`, M, y);
+  y += 12;
 
+  // ---------- RESUMO INTERNO (somente versão interna) ----------
   if (!clientOnly) {
-    // Resumo interno de custos e ganhos
     ensure(60);
-    ctx.y = y;
-    ensure(60);
-    y = ctx.y + 14;
+    y = sectionTitle(doc, 'RESUMO FINANCEIRO INTERNO', M, y, W);
 
-    doc.setTextColor(10, 10, 10);
+    const totalCusto = budget.cost_total
+      ? // cost_total no modelo guarda o subtotal de venda; recomputamos custo real abaixo
+        sumCost(budget)
+      : sumCost(budget);
+    const totalValor = sumValue(budget);
+    const lucro = totalValor - totalCusto;
+    const margemReal = totalValor > 0 ? lucro / totalValor : 0;
+
+    // Dois cartões lado a lado: CUSTO vs VALOR
+    const cardW = (W - M * 2 - 8) / 2;
+    const cardH = 26;
+
+    // Card CUSTO
+    setFill(doc, SOFT_BG);
+    doc.roundedRect(M, y, cardW, cardH, 2, 2, 'F');
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.text('RESUMO INTERNO (controle)', margin, y);
-    y += 6;
-    doc.setDrawColor(230, 230, 230);
-    doc.line(margin, y, margin + 50, y);
-    y += 6;
+    doc.setFontSize(7.5);
+    setColor(doc, MUTED);
+    doc.text('CUSTO DE PRODUÇÃO', M + 6, y + 8);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    setColor(doc, LIGHT);
+    doc.text('O que você gasta para produzir', M + 6, y + 13);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    setColor(doc, INK);
+    doc.text(formatCurrency(totalCusto), M + 6, y + 22);
 
-    const rows: Array<[string, string, string?]> = [
-      ['Subtotal', formatCurrency(budget.cost_total)],
-      ['Fee', formatCurrency(budget.fee_value)],
-      ['Impostos', formatCurrency(budget.tax_value)],
-      ['Custo interno', formatCurrency(budget.cost_total)],
-      ['Lucro', formatCurrency(budget.profit)],
-      ['Margem', formatPercent(budget.margin)],
+    // Card VALOR
+    const card2X = M + cardW + 8;
+    setFill(doc, INK);
+    doc.roundedRect(card2X, y, cardW, cardH, 2, 2, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    setColorHex(doc, '#D4C5A9');
+    doc.text('VALOR COBRADO', card2X + 6, y + 8);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    setColor(doc, { r: 175, g: 175, b: 175 });
+    doc.text('O que o cliente paga (Total Geral)', card2X + 6, y + 13);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    setColor(doc, { r: 255, g: 255, b: 255 });
+    doc.text(formatCurrency(budget.final_price), card2X + 6, y + 22);
+
+    y += cardH + 8;
+
+    // Linha de indicadores
+    ensure(24);
+    const metrics: Array<[string, string, boolean]> = [
+      ['LUCRO BRUTO', formatCurrency(lucro), true],
+      ['MARGEM', formatPercent(margemReal), false],
+      ['FEE', formatCurrency(budget.fee_value), false],
+      ['IMPOSTOS', formatCurrency(budget.tax_value), false],
     ];
+    const mW = (W - M * 2 - 6 * 3) / 4;
+    metrics.forEach(([label, value, highlight], i) => {
+      const mx = M + i * (mW + 6);
+      hairlineBox(doc, mx, y, mW, 20);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.8);
+      setColor(doc, MUTED);
+      doc.text(label, mx + 4, y + 7);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      setColor(doc, highlight ? GREEN : INK);
+      doc.text(value, mx + 4, y + 15);
+    });
+    y += 28;
+  }
+
+  footer(doc, W, H, M);
+  doc.save(`${clientOnly ? 'proposta' : 'interno'}-${slugify(budget.project_name)}.pdf`);
+}
+
+// ========================= TABELAS =========================
+
+// Tabela do cliente: descrição + valor (sem custos)
+function drawClientTable(doc: Doc, items: SectionItem[], M: number, startY: number, W: number, ensure: (n: number) => void): number {
+  let y = startY;
+  items.forEach((item, i) => {
+    ensure(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    setColor(doc, INK);
+    doc.text(truncate(item.name, 58), M, y);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.text(formatCurrency(item.value), W - M, y, { align: 'right' });
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.setTextColor(60, 60, 60);
-    rows.forEach(([label, value]) => {
-      ensure(8);
-      doc.text(label, margin, y);
-      doc.text(value, width - margin, y, { align: 'right' });
-      y += 6;
-    });
-  }
+    doc.setFontSize(7.8);
+    setColor(doc, LIGHT);
+    doc.text(item.meta, M, y + 4.6);
 
-  doc.save(`${clientOnly ? 'proposta' : 'interno'}-${budget.project_name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.pdf`);
-}
-
-function drawGeneralInfo(_doc: import('jspdf').default, budget: Budget, ctx: PdfContext): number {
-  ctx.doc.setFont('helvetica', 'bold');
-  ctx.doc.setFontSize(11);
-  ctx.doc.setTextColor(10, 10, 10);
-  ctx.doc.text('INFORMAÇÕES GERAIS', ctx.margin, ctx.y);
-  ctx.y += 6;
-  ctx.doc.setDrawColor(230, 230, 230);
-  ctx.doc.line(ctx.margin, ctx.y, ctx.margin + 50, ctx.y);
-  ctx.y += 6;
-
-  ctx.doc.setFillColor(248, 248, 248);
-  ctx.doc.roundedRect(ctx.margin, ctx.y, ctx.width - ctx.margin * 2, 30, 2, 2, 'F');
-  ctx.doc.setFont('helvetica', 'normal');
-  ctx.doc.setFontSize(9);
-
-  const lines = [
-    [t.clientName, `${budget.client_name}${budget.client_company ? ' / ' + budget.client_company : ''}`],
-    [t.emailField, `${budget.client_email || '—'} · ${budget.client_whatsapp || '—'}`],
-    [t.projectType, budget.project_type],
-  ];
-  lines.forEach(([label, value], i) => {
-    ctx.doc.setTextColor(110, 110, 110);
-    ctx.doc.text(label, ctx.margin + 6, ctx.y + 8 + i * 7);
-    ctx.doc.setTextColor(20, 20, 20);
-    ctx.doc.setFont('helvetica', 'bold');
-    ctx.doc.text(value, ctx.margin + 35, ctx.y + 8 + i * 7);
-    ctx.doc.setFont('helvetica', 'normal');
-  });
-  ctx.y += 36;
-  return ctx.y;
-}
-
-function drawScope(doc: import('jspdf').default, budget: Budget, ctx: PdfContext): number {
-  if (ctx.y + 30 > ctx.height - ctx.margin) {
-    doc.addPage();
-    ctx.y = ctx.margin;
-  }
-  ctx.doc.setFont('helvetica', 'bold');
-  ctx.doc.setFontSize(11);
-  ctx.doc.setTextColor(10, 10, 10);
-  ctx.doc.text('ESCOPO', ctx.margin, ctx.y);
-  ctx.y += 6;
-  ctx.doc.setDrawColor(230, 230, 230);
-  ctx.doc.line(ctx.margin, ctx.y, ctx.margin + 24, ctx.y);
-  ctx.y += 6;
-
-  ctx.doc.setFont('helvetica', 'normal');
-  ctx.doc.setFontSize(9);
-  ctx.doc.setTextColor(70, 70, 70);
-  const text = budget.project_description || 'Produção audiovisual conforme briefing acordado.';
-  const lines = doc.splitTextToSize(text, ctx.width - ctx.margin * 2);
-  lines.forEach((line: string) => {
-    if (ctx.y + 5 > ctx.height - ctx.margin) {
-      doc.addPage();
-      ctx.y = ctx.margin;
-    }
-    ctx.doc.text(line, ctx.margin, ctx.y);
-    ctx.y += 5;
-  });
-  ctx.y += 6;
-  return ctx.y;
-}
-
-function drawSection<T>(
-  doc: import('jspdf').default,
-  title: string,
-  items: T[],
-  ctx: PdfContext,
-  toDetails: (item: T) => string[],
-  toValue: (item: T) => string,
-): number {
-  if (ctx.y + 30 > ctx.height - ctx.margin) {
-    doc.addPage();
-    ctx.y = ctx.margin;
-  }
-
-  ctx.doc.setFont('helvetica', 'bold');
-  ctx.doc.setFontSize(11);
-  ctx.doc.setTextColor(10, 10, 10);
-  ctx.doc.text(`${title} (${items.length})`, ctx.margin, ctx.y);
-  ctx.y += 6;
-  ctx.doc.setDrawColor(230, 230, 230);
-  ctx.doc.line(ctx.margin, ctx.y, ctx.margin + 30, ctx.y);
-  ctx.y += 6;
-
-  ctx.doc.setFont('helvetica', 'normal');
-  ctx.doc.setFontSize(9);
-  ctx.doc.setTextColor(20, 20, 20);
-  items.forEach((item, i) => {
-    if (ctx.y + 12 > ctx.height - ctx.margin) {
-      doc.addPage();
-      ctx.y = ctx.margin;
-    }
-    const [name, ...rest] = toDetails(item);
-    ctx.doc.setFont('helvetica', 'bold');
-    ctx.doc.text(name.slice(0, 60), ctx.margin, ctx.y);
-    ctx.doc.setFont('helvetica', 'normal');
-    ctx.doc.setTextColor(110, 110, 110);
-    rest.forEach((d, idx) => {
-      ctx.doc.text(d, ctx.margin, ctx.y + 5 + idx * 4);
-    });
-    ctx.doc.setTextColor(20, 20, 20);
-    ctx.doc.setFont('helvetica', 'bold');
-    ctx.doc.text(toValue(item), ctx.width - ctx.margin, ctx.y, { align: 'right' });
-    ctx.y += Math.max(8, 4 + (rest.length - 1) * 4 + 4);
+    y += 9;
     if (i < items.length - 1) {
-      ctx.doc.setDrawColor(240, 240, 240);
-      ctx.doc.line(ctx.margin, ctx.y, ctx.width - ctx.margin, ctx.y);
-      ctx.y += 2;
+      hairline(doc, M, y - 2, W - M, true);
+      y += 1;
     }
   });
-  ctx.y += 4;
-  return ctx.y;
+  return y;
 }
 
-function drawSchedule(doc: import('jspdf').default, budget: Budget, ctx: PdfContext): number {
-  if (ctx.y + 28 > ctx.height - ctx.margin) {
-    doc.addPage();
-    ctx.y = ctx.margin;
-  }
-  ctx.doc.setFont('helvetica', 'bold');
-  ctx.doc.setFontSize(11);
-  ctx.doc.setTextColor(10, 10, 10);
-  ctx.doc.text('DATAS & CRONOGRAMA', ctx.margin, ctx.y);
-  ctx.y += 6;
-  ctx.doc.setDrawColor(230, 230, 230);
-  ctx.doc.line(ctx.margin, ctx.y, ctx.margin + 50, ctx.y);
-  ctx.y += 6;
+// Tabela interna: descrição | meta | CUSTO | VALOR
+function drawInternalTable(doc: Doc, items: SectionItem[], M: number, startY: number, W: number, ensure: (n: number) => void): number {
+  let y = startY;
+  const colValor = W - M;
+  const colCusto = W - M - 38;
 
-  ctx.doc.setFillColor(248, 248, 248);
-  ctx.doc.roundedRect(ctx.margin, ctx.y, ctx.width - ctx.margin * 2, 24, 2, 2, 'F');
-  ctx.doc.setFont('helvetica', 'normal');
-  ctx.doc.setFontSize(9);
-  const fields: Array<[string, string]> = [
-    [t.shootingDays, `${budget.production.shooting_days} ${t.days.toLowerCase()}`],
-    [t.delivery, `${budget.production.delivery_days} ${t.days.toLowerCase()}`],
-    [t.startDate, budget.production.start_date ? formatDate(budget.production.start_date) : '—'],
-  ];
-  ctx.doc.setTextColor(110, 110, 110);
-  fields.forEach(([label, value], i) => {
-    ctx.doc.text(label, ctx.margin + 6, ctx.y + 9 + i * 5);
-    ctx.doc.setTextColor(20, 20, 20);
-    ctx.doc.setFont('helvetica', 'bold');
-    ctx.doc.text(value, ctx.margin + 38, ctx.y + 9 + i * 5);
-    ctx.doc.setFont('helvetica', 'normal');
+  // Cabeçalho da tabela
+  ensure(10);
+  setFill(doc, SOFT_BG);
+  doc.rect(M, y - 4, W - M * 2, 8, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.8);
+  setColor(doc, MUTED);
+  doc.text('DESCRIÇÃO', M + 2, y + 1);
+  doc.text('CUSTO', colCusto, y + 1, { align: 'right' });
+  doc.text('VALOR', colValor, y + 1, { align: 'right' });
+  y += 9;
+
+  let totalCost = 0;
+  let totalValue = 0;
+
+  items.forEach((item) => {
+    ensure(10);
+    totalCost += item.cost;
+    totalValue += item.value;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    setColor(doc, INK);
+    doc.text(truncate(item.name, 42), M + 2, y);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    setColor(doc, LIGHT);
+    doc.text(item.meta, M + 2, y + 4.4);
+
+    // Custo (cinza)
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    setColor(doc, MUTED);
+    doc.text(formatCurrency(item.cost), colCusto, y, { align: 'right' });
+
+    // Valor (preto, destaque)
+    doc.setFont('helvetica', 'bold');
+    setColor(doc, INK);
+    doc.text(formatCurrency(item.value), colValor, y, { align: 'right' });
+
+    y += 8.5;
+    hairline(doc, M, y - 2.5, W - M, true);
+    y += 0.5;
   });
-  ctx.y += 30;
-  return ctx.y;
+
+  // Subtotal da seção
+  ensure(8);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  setColor(doc, MUTED);
+  doc.text('SUBTOTAL', M + 2, y + 3);
+  doc.setFontSize(9);
+  setColor(doc, MUTED);
+  doc.text(formatCurrency(totalCost), colCusto, y + 3, { align: 'right' });
+  setColor(doc, INK);
+  doc.text(formatCurrency(totalValue), colValor, y + 3, { align: 'right' });
+  y += 7;
+
+  return y;
+}
+
+// ========================= HELPERS =========================
+
+function sectionTitle(doc: Doc, title: string, M: number, y: number, W: number): number {
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  setColor(doc, INK);
+  doc.text(title, M, y);
+  doc.setDrawColor(INK.r, INK.g, INK.b);
+  doc.setLineWidth(0.4);
+  doc.line(M, y + 2.5, W - M, y + 2.5);
+  return y + 9;
+}
+
+function drawFactsGrid(doc: Doc, facts: Array<[string, string]>, M: number, startY: number, W: number): number {
+  const cols = 3;
+  const gap = 6;
+  const cellW = (W - M * 2 - gap * (cols - 1)) / cols;
+  const rowH = 16;
+  let y = startY;
+
+  facts.forEach(([label, value], i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = M + col * (cellW + gap);
+    const cy = y + row * (rowH + 4);
+
+    hairlineBox(doc, x, cy, cellW, rowH);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    setColor(doc, LIGHT);
+    doc.text(label, x + 4, cy + 6);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    setColor(doc, INK);
+    doc.text(truncate(value, 26), x + 4, cy + 12);
+  });
+
+  const rows = Math.ceil(facts.length / cols);
+  return y + rows * (rowH + 4) - 4;
+}
+
+function hairline(doc: Doc, x1: number, yy: number, x2: number, soft = false) {
+  const c = soft ? HAIRLINE : { r: 200, g: 200, b: 200 };
+  doc.setDrawColor(c.r, c.g, c.b);
+  doc.setLineWidth(0.2);
+  doc.line(x1, yy, x2, yy);
+}
+
+function hairlineBox(doc: Doc, x: number, yy: number, w: number, h: number) {
+  doc.setDrawColor(HAIRLINE.r, HAIRLINE.g, HAIRLINE.b);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(x, yy, w, h, 1.5, 1.5, 'S');
+}
+
+function footer(doc: Doc, W: number, H: number, M: number) {
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  setColor(doc, { r: 170, g: 170, b: 170 });
+  doc.text('SIM · Still In Movement', M, H - 8);
+  doc.text('Produzido por @domi.n.arte', W - M, H - 8, { align: 'right' });
+}
+
+function setColor(doc: Doc, c: { r: number; g: number; b: number }) {
+  doc.setTextColor(c.r, c.g, c.b);
+}
+function setColorHex(doc: Doc, hex: string) {
+  doc.setTextColor(hex);
+}
+function setFill(doc: Doc, c: { r: number; g: number; b: number }) {
+  doc.setFillColor(c.r, c.g, c.b);
+}
+function setFillHex(doc: Doc, hex: string) {
+  doc.setFillColor(hex);
+}
+
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max - 1) + '…' : s;
+}
+
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+}
+
+function sumCost(budget: Budget): number {
+  let total = 0;
+  budget.professionals.forEach((p) => (total += p.cost_price * p.days));
+  budget.equipment.forEach((e) => (total += e.cost_price * e.days));
+  budget.services.forEach((s) => (total += s.cost_price * s.quantity));
+  budget.reels.forEach((r) => (total += r.cost_price * r.quantity));
+  return total;
+}
+
+function sumValue(budget: Budget): number {
+  let total = 0;
+  budget.professionals.forEach((p) => (total += p.subtotal));
+  budget.equipment.forEach((e) => (total += e.subtotal));
+  budget.services.forEach((s) => (total += s.subtotal));
+  budget.reels.forEach((r) => (total += r.subtotal));
+  return total;
 }

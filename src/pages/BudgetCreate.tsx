@@ -42,8 +42,6 @@ const STEPS = [
   t.steps.reels,
   t.steps.equipment,
   t.steps.professionals,
-  t.steps.scope,
-  t.steps.delivery,
   t.steps.financial,
   t.steps.proposal,
 ];
@@ -425,10 +423,10 @@ export function BudgetCreate() {
       map.set('Equipamentos', current);
     }
     if (professionalsList.length > 0) {
-      const current = map.get('Profissionais') ?? { subtotal: 0, items: 0 };
+      const current = map.get('Equipe') ?? { subtotal: 0, items: 0 };
       current.subtotal += professionalsList.reduce((s, p) => s + p.subtotal, 0);
       current.items += professionalsList.length;
-      map.set('Profissionais', current);
+      map.set('Equipe', current);
     }
     return Array.from(map.entries())
       .map(([category, value]) => ({ category, ...value }))
@@ -443,10 +441,9 @@ export function BudgetCreate() {
   function canContinue() {
     if (step === 1) return client.name.trim() !== '' && client.email.trim() !== '';
     if (step === 2) return project.name.trim() !== '';
-    if (step === 3) return production.shooting_days > 0 && production.city.trim() !== '';
+    if (step === 3) return production.delivery_days > 0 && production.city.trim() !== '';
     if (step === 4) return Object.keys(selectedServices).length > 0;
     if (step === 5) return Object.keys(selectedReels).length > 0;
-    if (step === 8) return production.delivery_days > 0;
     return true;
   }
 
@@ -688,7 +685,7 @@ export function BudgetCreate() {
                 <SelectStep
                   title={t.steps.professionals}
                   subtitle="Clique nos profissionais. O valor é calculado por diária × dias."
-                  categories={['Profissionais']}
+                  categories={['Equipe']}
                   priceList={priceList}
                   selected={selectedProfessionals}
                   onToggle={toggleProfessional}
@@ -696,41 +693,9 @@ export function BudgetCreate() {
                 />
               )}
 
-              {step === 8 && (
-                <StepPanel key="scope" title={t.steps.scope} subtitle="Descreva detalhadamente o projeto, contexto, objetivos e referências.">
-                  <div className="sm:col-span-2">
-                    <Label>{t.scopeDescription}</Label>
-                    <textarea
-                      value={project.description}
-                      onChange={(e) => setProject({ ...project, description: e.target.value })}
-                      rows={10}
-                      className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm leading-6 text-white transition focus:border-white/35"
-                      placeholder="Descreva o briefing, os objetivos da produção, referências visuais, tom de comunicação, formato de entrega e qualquer observação importante."
-                    />
-                  </div>
-                </StepPanel>
-              )}
+              {step === 8 && <FinancialStep financials={financials} categorySummary={categorySummary} />}
 
-              {step === 9 && (
-                <StepPanel key="delivery" title={t.steps.delivery} subtitle="Defina o tempo de entrega do projeto.">
-                  <Input
-                    label={t.startDate}
-                    type="date"
-                    value={production.start_date || ''}
-                    onChange={(v) => setProduction({ ...production, start_date: v })}
-                  />
-                  <Input
-                    label={t.deliveryTime}
-                    type="number"
-                    value={String(production.delivery_days)}
-                    onChange={(v) => setProduction({ ...production, delivery_days: Number(v) })}
-                  />
-                </StepPanel>
-              )}
-
-              {step === 10 && <FinancialStep financials={financials} categorySummary={categorySummary} />}
-
-              {step === 11 && <ProposalStep onSave={saveBudget} saving={saving} />}
+              {step === 9 && <ProposalStep onSave={saveBudget} saving={saving} />}
             </AnimatePresence>
 
             <div className="mt-6 flex items-center justify-between border-t border-white/10 pt-6">
@@ -741,7 +706,7 @@ export function BudgetCreate() {
               >
                 <ChevronLeft size={16} /> {t.backBtn}
               </button>
-              {step < 11 ? (
+              {step < 9 ? (
                 <button
                   onClick={() => setStep(step + 1)}
                   disabled={!canContinue()}

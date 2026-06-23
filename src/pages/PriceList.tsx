@@ -15,7 +15,7 @@ const CATEGORIES: ServiceCategory[] = [
   'Finalização',
   'Logística',
   'Equipamentos',
-  'Profissionais',
+  'Equipe',
   'Extras',
 ];
 

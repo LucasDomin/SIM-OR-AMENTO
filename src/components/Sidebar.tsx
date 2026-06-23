@@ -108,6 +108,18 @@ export function Sidebar() {
             <LogOut size={18} />
             <span>{t.logout}</span>
           </button>
+
+          <a
+            href="https://www.instagram.com/domi.n.arte/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2 flex flex-col items-center rounded-lg px-4 py-3 text-center transition-colors hover:bg-white/5"
+          >
+            <span className="text-[9px] uppercase tracking-[0.3em] text-white/25">Produzido por</span>
+            <span className="creator-credit mt-1 font-display text-sm font-semibold tracking-wide">
+              @domi.n.arte
+            </span>
+          </a>
         </div>
       </motion.aside>
     </>

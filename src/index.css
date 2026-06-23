@@ -92,6 +92,35 @@ body::before {
   animation: fadeIn 0.5s ease-out forwards;
 }
 
+/* Crédito do criador — brilho que reage ao hover do mouse */
+@keyframes creator-shimmer {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+.creator-credit {
+  background-image: linear-gradient(
+    100deg,
+    #6b6b72 0%,
+    #6b6b72 35%,
+    #f4f1ec 50%,
+    #c9a875 60%,
+    #6b6b72 75%,
+    #6b6b72 100%
+  );
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  transition: filter 0.4s ease;
+}
+
+.creator-credit:hover {
+  animation: creator-shimmer 1.6s linear infinite;
+  filter: drop-shadow(0 0 6px rgba(212, 197, 169, 0.55)) drop-shadow(0 0 12px rgba(201, 168, 117, 0.35));
+}
+
 input, textarea, select {
   outline: none;
 }

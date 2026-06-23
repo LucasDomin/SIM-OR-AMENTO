@@ -34,6 +34,7 @@ export type ServiceCategory =
   | 'Logística'
   | 'Equipamentos'
   | 'Profissionais'
+  | 'Equipe'
   | 'Extras'
   | string;
 
