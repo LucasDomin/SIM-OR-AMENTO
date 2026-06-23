@@ -1,5 +1,5 @@
 import type { Budget, SystemSettings } from '../types';
-import { getLogoDataUrl } from './logoImage';
+import { getLogoDataUrl, LOGO_ASPECT } from './logoImage';
 import { formatCurrency } from './supabase';
 import { formatDate } from './utils';
 import { formatPercent } from './calc';
@@ -42,8 +42,10 @@ export async function generateProposalPDF(budget: Budget, settings: SystemSettin
   // ---------- CABEÇALHO ----------
   const logoImg = await getLogoDataUrl(4);
   if (logoImg) {
-    // Proporção preservada do PNG com padding seguro: nunca corta a assinatura.
-    doc.addImage(logoImg, 'PNG', M, y - 2, 62, 21.4);
+    // Logo pequena, mantida íntegra usando a proporção real (nunca corta)
+    const logoW = 50;
+    const logoH = logoW / LOGO_ASPECT;
+    doc.addImage(logoImg, 'PNG', M, y, logoW, logoH);
   } else {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(22);

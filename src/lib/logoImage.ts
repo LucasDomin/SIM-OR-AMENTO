@@ -8,8 +8,15 @@ export function base64ToUint8Array(base64: string): Uint8Array {
   return bytes;
 }
 
+// Dimensões da logo (viewBox completo + margem de segurança para não cortar nada).
+// O traçado da assinatura "Sim" tem leve sombra/curvas que extrapolam o viewBox.
+const LOGO_VB_W = 1192;
+const LOGO_VB_H = 380;
+const LOGO_PAD = 24; // margem de respiro em unidades de viewBox
+export const LOGO_ASPECT = (LOGO_VB_W + LOGO_PAD * 2) / (LOGO_VB_H + LOGO_PAD * 2);
+
 // Gera uma imagem PNG (dataURL) da logo SIM a partir do SVG renderizado na página.
-// Mantém uma margem de segurança no viewBox para impedir cortes no PDF.
+// Usa o viewBox completo com padding para garantir que a logo NUNCA seja cortada.
 export async function getLogoDataUrl(scale = 4): Promise<string | null> {
   try {
     const svgEl = document.querySelector('svg[aria-label="SIM — Still In Movement"]') as SVGSVGElement | null;
@@ -20,12 +27,15 @@ export async function getLogoDataUrl(scale = 4): Promise<string | null> {
     clone.querySelectorAll('path').forEach((p) => p.setAttribute('fill', '#0a0a0a'));
     clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
 
-    // O desenho autoral da assinatura desce até ~y=366. O recorte anterior em 340px
-    // cortava a parte inferior do "S". Usamos o viewBox original com padding.
-    const viewBox = { x: -28, y: -24, width: 1248, height: 430 };
-    clone.setAttribute('viewBox', `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
-    clone.setAttribute('width', String(viewBox.width));
-    clone.setAttribute('height', String(viewBox.height));
+    // viewBox completo com padding em todos os lados (evita corte de qualquer traço)
+    const vbX = -LOGO_PAD;
+    const vbY = -LOGO_PAD;
+    const vbW = LOGO_VB_W + LOGO_PAD * 2;
+    const vbH = LOGO_VB_H + LOGO_PAD * 2;
+    clone.setAttribute('viewBox', `${vbX} ${vbY} ${vbW} ${vbH}`);
+    clone.setAttribute('width', String(vbW));
+    clone.setAttribute('height', String(vbH));
+    clone.setAttribute('preserveAspectRatio', 'xMidYMid meet');
 
     const svgString = new XMLSerializer().serializeToString(clone);
     const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
@@ -36,8 +46,8 @@ export async function getLogoDataUrl(scale = 4): Promise<string | null> {
       img.onload = () => {
         try {
           const canvas = document.createElement('canvas');
-          canvas.width = viewBox.width * scale;
-          canvas.height = viewBox.height * scale;
+          canvas.width = vbW * scale;
+          canvas.height = vbH * scale;
           const ctx = canvas.getContext('2d');
           if (!ctx) {
             resolve(null);
