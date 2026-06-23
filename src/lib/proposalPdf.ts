@@ -42,8 +42,8 @@ export async function generateProposalPDF(budget: Budget, settings: SystemSettin
   // ---------- CABEÇALHO ----------
   const logoImg = await getLogoDataUrl(4);
   if (logoImg) {
-    // Logo menor (60 × 17mm)
-    doc.addImage(logoImg, 'PNG', M, y, 60, 17);
+    // Logo menor, mantida íntegra (proporção ~3.5:1)
+    doc.addImage(logoImg, 'PNG', M, y, 55, 16);
   } else {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(22);
@@ -94,21 +94,21 @@ export async function generateProposalPDF(budget: Budget, settings: SystemSettin
   y = drawFactsGrid(doc, facts, M, y, W);
   y += 10;
 
-  // ---------- ESCOPO ----------
-  if (budget.project_description) {
-    ensure(30);
-    y = sectionTitle(doc, 'ESCOPO', M, y, W);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9.5);
-    setColor(doc, { r: 70, g: 70, b: 70 });
-    const lines = doc.splitTextToSize(budget.project_description, W - M * 2);
-    lines.forEach((line: string) => {
-      ensure(6);
-      doc.text(line, M, y);
-      y += 5.4;
-    });
-    y += 8;
-  }
+  // ---------- ESCOPO (sempre visível) ----------
+  ensure(30);
+  y = sectionTitle(doc, 'ESCOPO', M, y, W);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9.5);
+  setColor(doc, { r: 60, g: 60, b: 60 });
+  const escopoTexto = budget.project_description ||
+    'Detalhes do escopo e objetivos da produção.';
+  const lines = doc.splitTextToSize(escopoTexto, W - M * 2);
+  lines.forEach((line: string) => {
+    ensure(6);
+    doc.text(line, M, y);
+    y += 5.4;
+  });
+  y += 8;
 
   // ---------- MONTAR SEÇÕES ----------
   const sections: Array<{ title: string; items: SectionItem[] }> = [];
@@ -195,14 +195,16 @@ export async function generateProposalPDF(budget: Budget, settings: SystemSettin
   setColor(doc, { r: 255, g: 255, b: 255 });
   doc.text(formatCurrency(budget.final_price), M + 12, y + 23);
 
-  // Breakdown à direita
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  setColor(doc, { r: 175, g: 175, b: 175 });
-  const bdX = W - M - 12;
-  doc.text(`Subtotal  ${formatCurrency(budget.cost_total)}`, bdX, y + 10, { align: 'right' });
-  doc.text(`Fee (${settings.fee_percentage}%)  ${formatCurrency(budget.fee_value)}`, bdX, y + 16, { align: 'right' });
-  doc.text(`Impostos (${settings.tax_percentage}%)  ${formatCurrency(budget.tax_value)}`, bdX, y + 22, { align: 'right' });
+  // Breakdown à direita (somente versão interna)
+  if (!clientOnly) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    setColor(doc, { r: 175, g: 175, b: 175 });
+    const bdX = W - M - 12;
+    doc.text(`Subtotal  ${formatCurrency(sumCost(budget))}`, bdX, y + 10, { align: 'right' });
+    doc.text(`Fee (${settings.fee_percentage}%)  ${formatCurrency(budget.fee_value)}`, bdX, y + 16, { align: 'right' });
+    doc.text(`Impostos (${settings.tax_percentage}%)  ${formatCurrency(budget.tax_value)}`, bdX, y + 22, { align: 'right' });
+  }
 
   y += boxH + 8;
 

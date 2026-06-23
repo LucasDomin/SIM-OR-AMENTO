@@ -39,7 +39,6 @@ const STEPS = [
   t.steps.project,
   t.steps.production,
   t.steps.services,
-  t.steps.reels,
   t.steps.equipment,
   t.steps.professionals,
   t.steps.financial,
@@ -62,6 +61,7 @@ const SELECTABLE_CATEGORIES = [
   'Produção',
   'Fotografia',
   'Pós Produção',
+  'Reels',
   'Finalização',
   'Logística',
   'Extras',
@@ -152,8 +152,8 @@ export function BudgetCreate() {
     setSelectedServices((current) => ({ ...current, [priceId]: qty }));
   }
 
-  // ----- Operações de Reels -----
-  function toggleReel(price: PriceListItem) {
+  // ----- Operações de Reels (usadas via modal de variante) -----
+  function _toggleReel(price: PriceListItem) {
     const key = price.id;
     setSelectedReels((current) => {
       if (current[key]) {
@@ -165,7 +165,7 @@ export function BudgetCreate() {
     });
   }
 
-  function updateReelQty(priceId: string, qty: number) {
+  function _updateReelQty(priceId: string, qty: number) {
     if (qty <= 0) {
       setSelectedReels((current) => {
         const next = { ...current };
@@ -176,6 +176,10 @@ export function BudgetCreate() {
     }
     setSelectedReels((current) => ({ ...current, [priceId]: qty }));
   }
+
+  // Suprime warnings de não-uso (funções reservadas para extensibilidade)
+  void _toggleReel;
+  void _updateReelQty;
 
   // ----- Operações de Equipamentos -----
   function toggleEquipment(price: PriceListItem) {
@@ -239,11 +243,22 @@ export function BudgetCreate() {
 
   function selectVariant(variant: 'Reels' | 'Wide') {
     if (!variantModal) return;
-    // Buscar o item correspondente à variante
-    const variantName = variant === 'Reels' ? 'Edição de Reel' : 'Edição de Vídeo';
-    const variantPrice = priceList.find((p) => p.name === variantName);
-    if (variantPrice) {
-      toggleService(variantPrice);
+    const { price } = variantModal;
+    if (variant === 'Reels') {
+      // Garantir que "Edição de Vídeo" não esteja nos serviços
+      setSelectedServices((current) => {
+        const next = { ...current };
+        delete next[price.id];
+        return next;
+      });
+      // Adicionar "Edição de Reel" nos reels (integração automática)
+      const reelPrice = priceList.find((p) => p.name === 'Edição de Reel');
+      if (reelPrice) {
+        setSelectedReels((current) => ({ ...current, [reelPrice.id]: 1 }));
+      }
+    } else {
+      // Wide: adicionar "Edição de Vídeo" nos serviços
+      setSelectedServices((current) => ({ ...current, [price.id]: 1 }));
     }
     setVariantModal(null);
   }
@@ -443,7 +458,6 @@ export function BudgetCreate() {
     if (step === 2) return project.name.trim() !== '';
     if (step === 3) return production.delivery_days > 0 && production.city.trim() !== '';
     if (step === 4) return Object.keys(selectedServices).length > 0;
-    if (step === 5) return Object.keys(selectedReels).length > 0;
     return true;
   }
 
@@ -591,13 +605,13 @@ export function BudgetCreate() {
                     </div>
                   </div>
                   <div className="sm:col-span-2">
-                    <Label>Resumo inicial</Label>
+                    <Label>Escopo do projeto</Label>
                     <textarea
                       value={project.description}
                       onChange={(e) => setProject({ ...project, description: e.target.value })}
-                      rows={3}
-                      className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white transition focus:border-white/35"
-                      placeholder="Contexto e objetivo do projeto (detalhe mais na etapa de Escopo)."
+                      rows={6}
+                      className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm leading-6 text-white transition focus:border-white/35"
+                      placeholder="Descreva o briefing, objetivos da produção, referências visuais, tom de comunicação, formato de entrega e observações importantes."
                     />
                   </div>
                   <div className="sm:col-span-2 border-t border-white/10 pt-5">
@@ -646,30 +660,61 @@ export function BudgetCreate() {
               )}
 
               {step === 4 && (
-                <SelectStep
-                  title={t.steps.services}
-                  subtitle="Clique nos serviços para adicionar à proposta."
-                  categories={SELECTABLE_CATEGORIES}
-                  priceList={priceList}
-                  selected={selectedServices}
-                  onToggle={handleServiceClick}
-                  onQtyChange={updateServiceQty}
-                />
+                <>
+                  <SelectStep
+                    title={t.steps.services}
+                    subtitle="Clique nos itens para adicionar à proposta."
+                    categories={SELECTABLE_CATEGORIES}
+                    priceList={priceList}
+                    selected={selectedServices}
+                    onToggle={handleServiceClick}
+                    onQtyChange={updateServiceQty}
+                  />
+                  {Object.keys(selectedReels).length > 0 && (
+                    <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+                      <h4 className="mb-3 text-xs uppercase tracking-[0.28em] text-white/30">Reels adicionados</h4>
+                      <div className="space-y-2">
+                        {Object.entries(selectedReels).map(([priceId, qty]) => {
+                          const price = priceList.find((p) => p.id === priceId);
+                          if (!price) return null;
+                          return (
+                            <div key={priceId} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/30 p-3">
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-medium text-white">{price.name}</p>
+                                <p className="text-xs text-white/40">{formatCurrency(price.sale_price)} por unidade</p>
+                              </div>
+                              <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-black/30 px-2 py-1">
+                                <button
+                                  onClick={() => _updateReelQty(priceId, qty - 1)}
+                                  className="text-white/40 hover:text-white"
+                                >
+                                  <Minus size={14} />
+                                </button>
+                                <span className="w-4 text-center text-sm text-white">{qty}</span>
+                                <button
+                                  onClick={() => _updateReelQty(priceId, qty + 1)}
+                                  className="text-white/40 hover:text-white"
+                                >
+                                  <Plus size={14} />
+                                </button>
+                                <button
+                                  onClick={() => _updateReelQty(priceId, 0)}
+                                  className="ml-1 text-white/30 hover:text-red-400"
+                                  title="Remover"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
 
               {step === 5 && (
-                <SelectStep
-                  title={t.steps.reels}
-                  subtitle="Clique nos reels para adicionar. Cada um tem valor unitário próprio."
-                  categories={['Reels']}
-                  priceList={priceList}
-                  selected={selectedReels}
-                  onToggle={toggleReel}
-                  onQtyChange={updateReelQty}
-                />
-              )}
-
-              {step === 6 && (
                 <SelectStep
                   title={t.steps.equipment}
                   subtitle="Clique nos equipamentos. O valor é calculado por diária × dias."
@@ -681,10 +726,10 @@ export function BudgetCreate() {
                 />
               )}
 
-              {step === 7 && (
+              {step === 6 && (
                 <SelectStep
                   title={t.steps.professionals}
-                  subtitle="Clique nos profissionais. O valor é calculado por diária × dias."
+                  subtitle="Clique nos membros da equipe. O valor é calculado por diária × dias."
                   categories={['Equipe']}
                   priceList={priceList}
                   selected={selectedProfessionals}
@@ -693,9 +738,9 @@ export function BudgetCreate() {
                 />
               )}
 
-              {step === 8 && <FinancialStep financials={financials} categorySummary={categorySummary} />}
+              {step === 7 && <FinancialStep financials={financials} categorySummary={categorySummary} />}
 
-              {step === 9 && <ProposalStep onSave={saveBudget} saving={saving} />}
+              {step === 8 && <ProposalStep onSave={saveBudget} saving={saving} />}
             </AnimatePresence>
 
             <div className="mt-6 flex items-center justify-between border-t border-white/10 pt-6">
@@ -706,7 +751,7 @@ export function BudgetCreate() {
               >
                 <ChevronLeft size={16} /> {t.backBtn}
               </button>
-              {step < 9 ? (
+              {step < 8 ? (
                 <button
                   onClick={() => setStep(step + 1)}
                   disabled={!canContinue()}
