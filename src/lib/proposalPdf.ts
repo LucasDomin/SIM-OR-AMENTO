@@ -1,8 +1,9 @@
 import type { Budget, SystemSettings } from '../types';
 import { getLogoDataUrl } from './logoImage';
 import { formatCurrency } from './supabase';
-import { formatDate, formatDateFull } from './utils';
+import { formatDate } from './utils';
 import { formatPercent } from './calc';
+import { t } from './i18n';
 
 const SEGMENTS = ['#996EA7', '#E45A58', '#EA8D11', '#FAC421', '#33AE74', '#2894D1', '#B1B7B1', '#F4C78D', '#8B5A2B'];
 
@@ -32,9 +33,8 @@ export async function generateProposalPDF(budget: Budget, settings: SystemSettin
 
   const logoImg = await getLogoDataUrl(4);
 
-  // Header
+  // Header com logo 25% menor
   if (logoImg) {
-    // Logo 20% menor que a versão anterior (era 120×34, agora ~95×27)
     doc.addImage(logoImg, 'PNG', margin, y - 2, 90, 26);
     y += 30;
   } else {
@@ -48,7 +48,7 @@ export async function generateProposalPDF(budget: Budget, settings: SystemSettin
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.text(clientOnly ? 'PROPOSTA COMERCIAL' : 'ORÇAMENTO INTERNO', width - margin, y - 10, { align: 'right' });
-  doc.text(formatDateFull(budget.proposal_date), width - margin, y - 4, { align: 'right' });
+  doc.text(formatDate(budget.proposal_date), width - margin, y - 4, { align: 'right' });
 
   // Title
   y += 6;
@@ -61,7 +61,7 @@ export async function generateProposalPDF(budget: Budget, settings: SystemSettin
 
   const ctx: PdfContext = { doc, width, height, margin, y, clientOnly };
 
-  // Box Informações Gerais
+  // Informações Gerais
   y = drawGeneralInfo(doc, budget, ctx);
   // Escopo
   y = drawScope(doc, budget, { ...ctx, y });
@@ -111,36 +111,44 @@ export async function generateProposalPDF(budget: Budget, settings: SystemSettin
   // Cronograma
   y = drawSchedule(doc, budget, { ...ctx, y });
 
-  // Investimento final
+  // TOTAL GERAL - destaque máximo
+  ensure(60);
   ctx.y = y;
-  ensure(50);
-  y = ctx.y + 4;
-  doc.setFillColor(10, 10, 10);
-  doc.roundedRect(margin, y, width - margin * 2, 38, 2, 2, 'F');
+  ensure(60);
+  y = ctx.y + 6;
 
-  // Barra colorida dentro do bloco
-  const barTop = y + 32;
+  doc.setFillColor(10, 10, 10);
+  doc.roundedRect(margin, y, width - margin * 2, 52, 3, 3, 'F');
+
+  // Barra colorida
+  const barTop = y + 44;
   const barLeft = margin + 10;
   const barWidth = width - margin * 2 - 20;
   const segW = barWidth / SEGMENTS.length;
   SEGMENTS.forEach((color, i) => {
     doc.setFillColor(color);
-    doc.rect(barLeft + i * segW, barTop, segW + 0.4, 2, 'F');
+    doc.rect(barLeft + i * segW, barTop, segW + 0.4, 2.5, 'F');
   });
 
   doc.setTextColor(212, 197, 169);
-  doc.setFontSize(8);
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.text('INVESTIMENTO TOTAL', margin + 10, y + 12);
+  doc.text('TOTAL GERAL', margin + 10, y + 14);
 
-  // Fonte menor para o valor final, conforme solicitado
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(22);
+  doc.setFontSize(28);
   doc.setFont('helvetica', 'bold');
-  doc.text(formatCurrency(budget.final_price), margin + 10, y + 26);
+  doc.text(formatCurrency(budget.final_price), margin + 10, y + 32);
 
-  // Validade/condições
-  y += 50;
+  // Detalhamento do cálculo
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(180, 180, 180);
+  const calcDetail = `Subtotal ${formatCurrency(budget.cost_total)} + Fee ${formatCurrency(budget.fee_value)} + Impostos ${formatCurrency(budget.tax_value)}`;
+  doc.text(calcDetail, margin + 10, y + 42);
+
+  // Condições
+  y += 64;
   doc.setTextColor(95, 95, 95);
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
@@ -149,24 +157,27 @@ export async function generateProposalPDF(budget: Budget, settings: SystemSettin
 
   if (!clientOnly) {
     // Resumo interno de custos e ganhos
+    ensure(60);
     ctx.y = y;
-    ensure(50);
+    ensure(60);
     y = ctx.y + 14;
+
     doc.setTextColor(10, 10, 10);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
-    doc.text('RESUMO INTERNO', margin, y);
+    doc.text('RESUMO INTERNO (controle)', margin, y);
     y += 6;
     doc.setDrawColor(230, 230, 230);
-    doc.line(margin, y, margin + 40, y);
+    doc.line(margin, y, margin + 50, y);
     y += 6;
 
     const rows: Array<[string, string, string?]> = [
-      [t.costTotal, formatCurrency(budget.cost_total)],
-      [t.fee, formatCurrency(budget.fee_value)],
-      [t.tax, formatCurrency(budget.tax_value)],
-      [t.profit, formatCurrency(budget.profit)],
-      [t.margin, formatPercent(budget.margin)],
+      ['Subtotal', formatCurrency(budget.cost_total)],
+      ['Fee', formatCurrency(budget.fee_value)],
+      ['Impostos', formatCurrency(budget.tax_value)],
+      ['Custo interno', formatCurrency(budget.cost_total)],
+      ['Lucro', formatCurrency(budget.profit)],
+      ['Margem', formatPercent(budget.margin)],
     ];
 
     doc.setFont('helvetica', 'normal');
@@ -182,8 +193,6 @@ export async function generateProposalPDF(budget: Budget, settings: SystemSettin
 
   doc.save(`${clientOnly ? 'proposta' : 'interno'}-${budget.project_name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.pdf`);
 }
-
-import { t } from './i18n';
 
 function drawGeneralInfo(_doc: import('jspdf').default, budget: Budget, ctx: PdfContext): number {
   ctx.doc.setFont('helvetica', 'bold');
@@ -201,9 +210,9 @@ function drawGeneralInfo(_doc: import('jspdf').default, budget: Budget, ctx: Pdf
   ctx.doc.setFontSize(9);
 
   const lines = [
-    [`Cliente`, `${budget.client_name}${budget.client_company ? ' / ' + budget.client_company : ''}`],
-    [`Contato`, `${budget.client_email || '—'} · ${budget.client_whatsapp || '—'}`],
-    [`Tipo`, budget.project_type],
+    [t.clientName, `${budget.client_name}${budget.client_company ? ' / ' + budget.client_company : ''}`],
+    [t.emailField, `${budget.client_email || '—'} · ${budget.client_whatsapp || '—'}`],
+    [t.projectType, budget.project_type],
   ];
   lines.forEach(([label, value], i) => {
     ctx.doc.setTextColor(110, 110, 110);

@@ -127,11 +127,17 @@ export function BudgetDetail() {
           </div>
         </motion.header>
 
-        <div className="grid gap-4 md:grid-cols-4">
-          <Metric label={t.finalPrice} value={formatCurrency(budget.final_price)} strong />
-          <Metric label={t.totalCost} value={formatCurrency(budget.cost_total)} />
-          <Metric label={t.profit} value={formatCurrency(budget.profit)} positive />
-          <Metric label={t.margin} value={formatPercent(budget.margin)} />
+        {/* TOTAL GERAL - destaque máximo */}
+        <div className="rounded-3xl border border-accent/30 bg-accent/[0.08] p-8">
+          <p className="mb-2 text-xs uppercase tracking-[0.22em] text-accent">{t.finalPriceLabel}</p>
+          <p className="font-display text-5xl text-white md:text-7xl">
+            {formatCurrency(budget.final_price)}
+          </p>
+          <div className="mt-6 grid gap-4 sm:grid-cols-3">
+            <Metric label="Subtotal" value={formatCurrency(budget.cost_total)} />
+            <Metric label={`Fee (${t.fee})`} value={formatCurrency(budget.fee_value)} />
+            <Metric label={`Impostos (${t.tax})`} value={formatCurrency(budget.tax_value)} />
+          </div>
         </div>
 
         <section className="grid gap-5 lg:grid-cols-[1fr_360px]">
@@ -216,15 +222,13 @@ export function BudgetDetail() {
               </Card>
             )}
 
-            <Card title={t.internalItems}>
-              <p className="text-xs text-white/40 mb-3">Detalhamento completo (uso interno).</p>
+            {/* Controle interno */}
+            <Card title="Controle Interno">
+              <p className="text-xs text-white/40 mb-3">Valores para gestão — não aparecem na proposta do cliente.</p>
               <div className="grid gap-2 text-sm">
-                <div className="flex justify-between border-b border-white/5 pb-1"><span>{t.totalSale}</span><span>{formatCurrency(servicesSubtotal + reelsSubtotal + equipmentSubtotal + professionalsSubtotal)}</span></div>
-                <div className="flex justify-between border-b border-white/5 pb-1"><span>{t.totalCost}</span><span>{formatCurrency(budget.cost_total)}</span></div>
-                <div className="flex justify-between border-b border-white/5 pb-1"><span>{t.fee}</span><span>{formatCurrency(budget.fee_value)}</span></div>
-                <div className="flex justify-between border-b border-white/5 pb-1"><span>{t.tax}</span><span>{formatCurrency(budget.tax_value)}</span></div>
-                <div className="flex justify-between border-b border-white/5 pb-1"><span>{t.profit}</span><span className="text-emerald-400">{formatCurrency(budget.profit)}</span></div>
-                <div className="flex justify-between font-medium"><span>{t.margin}</span><span>{formatPercent(budget.margin)}</span></div>
+                <div className="flex justify-between border-b border-white/5 pb-1"><span>Custo total</span><span>{formatCurrency(budget.cost_total)}</span></div>
+                <div className="flex justify-between border-b border-white/5 pb-1"><span>Lucro (fee)</span><span className="text-emerald-400">{formatCurrency(budget.profit)}</span></div>
+                <div className="flex justify-between font-medium"><span>Margem</span><span>{formatPercent(budget.margin)}</span></div>
               </div>
             </Card>
           </div>
@@ -260,7 +264,7 @@ export function BudgetDetail() {
               </p>
             </Card>
 
-            <Card title="Total">
+            <Card title="Resumo por seção">
               <div className="space-y-2 text-sm">
                 <InfoRow label="Serviços" value={formatCurrency(servicesSubtotal)} />
                 <InfoRow label="Reels" value={formatCurrency(reelsSubtotal)} />
@@ -322,16 +326,11 @@ function ScopeCard({ budget }: { budget: Budget }) {
   );
 }
 
-function Metric({ label, value, strong, positive }: { label: string; value: string; strong?: boolean; positive?: boolean }) {
+function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-      <p className="truncate text-xs uppercase tracking-[0.24em] text-white/30">{label}</p>
-      <p
-        className={`mt-3 break-words font-display ${strong ? 'text-2xl text-white md:text-3xl' : 'text-xl md:text-2xl'} ${positive ? 'text-emerald-400' : ''}`}
-        title={value}
-      >
-        {value}
-      </p>
+    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+      <p className="truncate text-xs uppercase tracking-[0.22em] text-white/30">{label}</p>
+      <p className="mt-1 break-words font-display text-xl text-white" title={value}>{value}</p>
     </div>
   );
 }

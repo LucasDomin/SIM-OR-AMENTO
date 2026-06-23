@@ -12,17 +12,16 @@ import {
   Save,
   SlidersHorizontal,
   Sparkles,
-  Trash2,
+  X,
 } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { generateId, getSettings, supabase } from '../lib/supabase';
 import {
   calcFinancials,
-  calcSubtotal,
-  calcTotalSale,
   formatPercent,
   type PricedItem,
 } from '../lib/calc';
+import { formatCurrency } from '../lib/supabase';
 import { t } from '../lib/i18n';
 import type {
   Budget,
@@ -59,17 +58,21 @@ const PROJECT_TYPES: ProjectType[] = [
   'Personalizado',
 ];
 
-const SERVICE_CATEGORIES = [
+// Categorias que aparecem como "clicar e selecionar" (não Reels, Equipamentos, Profissionais)
+const SELECTABLE_CATEGORIES = [
   'Pré Produção',
   'Produção',
   'Fotografia',
   'Pós Produção',
-  'Reels',
   'Finalização',
   'Logística',
-  'Equipamentos',
   'Extras',
 ];
+
+// Itens que têm variante (Reels vs Wide)
+const VARIANT_ITEMS: Record<string, string[]> = {
+  'Edição de Vídeo': ['Reels', 'Wide'],
+};
 
 export function BudgetCreate() {
   const navigate = useNavigate();
@@ -92,16 +95,21 @@ export function BudgetCreate() {
     delivery_days: number;
   }>({
     shooting_days: 1,
-    city: 'São Paulo',
+    city: 'Belo Horizonte',
     need_transportation: false,
     need_lodging: false,
     start_date: '',
     delivery_days: 15,
   });
-  const [services, setServices] = useState<BudgetItem[]>([]);
-  const [reels, setReels] = useState<ReelItem[]>([]);
-  const [equipment, setEquipment] = useState<EquipmentItem[]>([]);
-  const [professionals, setProfessionals] = useState<ProfessionalItem[]>([]);
+
+  // Itens selecionados (clicar e selecionar)
+  const [selectedServices, setSelectedServices] = useState<Record<string, number>>({});
+  const [selectedReels, setSelectedReels] = useState<Record<string, number>>({});
+  const [selectedEquipment, setSelectedEquipment] = useState<Record<string, number>>({});
+  const [selectedProfessionals, setSelectedProfessionals] = useState<Record<string, number>>({});
+
+  // Modal de variante
+  const [variantModal, setVariantModal] = useState<{ price: PriceListItem } | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -121,128 +129,125 @@ export function BudgetCreate() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ----- Operações de Serviços -----
-  function addService(price: PriceListItem) {
-    setServices((current) => {
-      const existing = current.find((item) => item.price_list_id === price.id);
-      if (existing) {
-        return current.map((item) =>
-          item.id === existing.id ? { ...item, quantity: item.quantity + 1, subtotal: calcSubtotal({ quantity: item.quantity + 1, unit_price: item.unit_price }) } : item,
-        );
+  // ----- Operações de Serviços (clicar e selecionar) -----
+  function toggleService(price: PriceListItem) {
+    const key = price.id;
+    setSelectedServices((current) => {
+      if (current[key]) {
+        const next = { ...current };
+        delete next[key];
+        return next;
       }
-      const newItem: BudgetItem = {
-        id: generateId(),
-        budget_id: '',
-        price_list_id: price.id,
-        category: price.category,
-        name: price.name,
-        quantity: 1,
-        unit_price: price.sale_price,
-        cost_price: price.cost_price,
-        subtotal: price.sale_price,
-        custom_pricing: false,
-      };
-      return [...current, newItem];
+      return { ...current, [key]: 1 };
     });
   }
 
-  function updateService(id: string, updates: Partial<BudgetItem>) {
-    setServices((current) =>
-      current.map((item) => {
-        if (item.id !== id) return item;
-        const next = { ...item, ...updates };
-        next.subtotal = calcSubtotal(next);
+  function updateServiceQty(priceId: string, qty: number) {
+    if (qty <= 0) {
+      setSelectedServices((current) => {
+        const next = { ...current };
+        delete next[priceId];
         return next;
-      }),
-    );
+      });
+      return;
+    }
+    setSelectedServices((current) => ({ ...current, [priceId]: qty }));
   }
 
-  function removeService(id: string) {
-    setServices((current) => current.filter((item) => item.id !== id));
-  }
-
-  function addCustomService() {
-    const newItem: BudgetItem = {
-      id: generateId(),
-      budget_id: '',
-      category: 'Extras',
-      name: 'Item personalizado',
-      quantity: 1,
-      unit_price: 0,
-      cost_price: 0,
-      subtotal: 0,
-      custom_pricing: true,
-    };
-    setServices((current) => [...current, newItem]);
-  }
-
-  // ----- Operações de Reels (categoria independente) -----
-  function addReel() {
-    setReels((current) => [
-      ...current,
-      { id: generateId(), name: 'Reel', quantity: 1, unit_price: 180, cost_price: 90, subtotal: 180 },
-    ]);
-  }
-
-  function updateReel(id: string, updates: Partial<ReelItem>) {
-    setReels((current) =>
-      current.map((item) => {
-        if (item.id !== id) return item;
-        const next = { ...item, ...updates };
-        next.subtotal = calcSubtotal(next);
+  // ----- Operações de Reels -----
+  function toggleReel(price: PriceListItem) {
+    const key = price.id;
+    setSelectedReels((current) => {
+      if (current[key]) {
+        const next = { ...current };
+        delete next[key];
         return next;
-      }),
-    );
+      }
+      return { ...current, [key]: 1 };
+    });
   }
 
-  function removeReel(id: string) {
-    setReels((current) => current.filter((item) => item.id !== id));
+  function updateReelQty(priceId: string, qty: number) {
+    if (qty <= 0) {
+      setSelectedReels((current) => {
+        const next = { ...current };
+        delete next[priceId];
+        return next;
+      });
+      return;
+    }
+    setSelectedReels((current) => ({ ...current, [priceId]: qty }));
   }
 
   // ----- Operações de Equipamentos -----
-  function addEquipment() {
-    setEquipment((current) => [
-      ...current,
-      { id: generateId(), name: '', daily_rate: 0, days: 1, pickup_date: '', return_date: '', cost_price: 0, subtotal: 0 },
-    ]);
-  }
-
-  function updateEquipment(id: string, updates: Partial<EquipmentItem>) {
-    setEquipment((current) =>
-      current.map((item) => {
-        if (item.id !== id) return item;
-        const next = { ...item, ...updates };
-        next.subtotal = (next.daily_rate || 0) * (next.days || 0);
+  function toggleEquipment(price: PriceListItem) {
+    const key = price.id;
+    setSelectedEquipment((current) => {
+      if (current[key]) {
+        const next = { ...current };
+        delete next[key];
         return next;
-      }),
-    );
+      }
+      return { ...current, [key]: 1 };
+    });
   }
 
-  function removeEquipment(id: string) {
-    setEquipment((current) => current.filter((item) => item.id !== id));
+  function updateEquipmentQty(priceId: string, qty: number) {
+    if (qty <= 0) {
+      setSelectedEquipment((current) => {
+        const next = { ...current };
+        delete next[priceId];
+        return next;
+      });
+      return;
+    }
+    setSelectedEquipment((current) => ({ ...current, [priceId]: qty }));
   }
 
   // ----- Operações de Profissionais -----
-  function addProfessional() {
-    setProfessionals((current) => [
-      ...current,
-      { id: generateId(), name: '', daily_rate: 0, days: 1, cost_price: 0, subtotal: 0 },
-    ]);
-  }
-
-  function updateProfessional(id: string, updates: Partial<ProfessionalItem>) {
-    setProfessionals((current) =>
-      current.map((item) => {
-        if (item.id !== id) return item;
-        const next = { ...item, ...updates };
-        next.subtotal = (next.daily_rate || 0) * (next.days || 0);
+  function toggleProfessional(price: PriceListItem) {
+    const key = price.id;
+    setSelectedProfessionals((current) => {
+      if (current[key]) {
+        const next = { ...current };
+        delete next[key];
         return next;
-      }),
-    );
+      }
+      return { ...current, [key]: 1 };
+    });
   }
 
-  function removeProfessional(id: string) {
-    setProfessionals((current) => current.filter((item) => item.id !== id));
+  function updateProfessionalQty(priceId: string, qty: number) {
+    if (qty <= 0) {
+      setSelectedProfessionals((current) => {
+        const next = { ...current };
+        delete next[priceId];
+        return next;
+      });
+      return;
+    }
+    setSelectedProfessionals((current) => ({ ...current, [priceId]: qty }));
+  }
+
+  // ----- Modal de Variante -----
+  function handleServiceClick(price: PriceListItem) {
+    const variants = VARIANT_ITEMS[price.name];
+    if (variants) {
+      setVariantModal({ price });
+    } else {
+      toggleService(price);
+    }
+  }
+
+  function selectVariant(variant: 'Reels' | 'Wide') {
+    if (!variantModal) return;
+    // Buscar o item correspondente à variante
+    const variantName = variant === 'Reels' ? 'Edição de Reel' : 'Edição de Vídeo';
+    const variantPrice = priceList.find((p) => p.name === variantName);
+    if (variantPrice) {
+      toggleService(variantPrice);
+    }
+    setVariantModal(null);
   }
 
   // ----- Modelos -----
@@ -250,64 +255,34 @@ export function BudgetCreate() {
     const findPrice = (name: string) => prices.find((p) => p.name === name);
     setProject({ name: '', type: template.project_type, description: '' });
     setProduction({ ...template.production, start_date: '' });
-    setServices(
-      template.service_names
-        .map((name) => findPrice(name))
-        .filter(Boolean)
-        .map((p) => ({
-          id: generateId(),
-          budget_id: '',
-          price_list_id: p!.id,
-          category: p!.category,
-          name: p!.name,
-          quantity: 1,
-          unit_price: p!.sale_price,
-          cost_price: p!.cost_price,
-          subtotal: p!.sale_price,
-          custom_pricing: false,
-        })),
-    );
-    setReels(
-      template.reel_names
-        .map((name) => findPrice(name))
-        .filter(Boolean)
-        .map((p) => ({
-          id: generateId(),
-          name: p!.name,
-          quantity: 1,
-          unit_price: p!.sale_price,
-          cost_price: p!.cost_price,
-          subtotal: p!.sale_price,
-        })),
-    );
-    setEquipment(
-      template.equipment_names
-        .map((name) => findPrice(name))
-        .filter(Boolean)
-        .map((p) => ({
-          id: generateId(),
-          name: p!.name,
-          daily_rate: p!.sale_price,
-          days: 1,
-          pickup_date: '',
-          return_date: '',
-          cost_price: p!.cost_price,
-          subtotal: p!.sale_price,
-        })),
-    );
-    setProfessionals(
-      template.professional_names
-        .map((name) => findPrice(name))
-        .filter(Boolean)
-        .map((p) => ({
-          id: generateId(),
-          name: p!.name,
-          daily_rate: p!.sale_price,
-          days: 1,
-          cost_price: p!.cost_price,
-          subtotal: p!.sale_price,
-        })),
-    );
+
+    const services: Record<string, number> = {};
+    template.service_names.forEach((name) => {
+      const p = findPrice(name);
+      if (p) services[p.id] = (services[p.id] || 0) + 1;
+    });
+    setSelectedServices(services);
+
+    const reels: Record<string, number> = {};
+    template.reel_names.forEach((name) => {
+      const p = findPrice(name);
+      if (p) reels[p.id] = (reels[p.id] || 0) + 1;
+    });
+    setSelectedReels(reels);
+
+    const equipment: Record<string, number> = {};
+    template.equipment_names.forEach((name) => {
+      const p = findPrice(name);
+      if (p) equipment[p.id] = (equipment[p.id] || 0) + 1;
+    });
+    setSelectedEquipment(equipment);
+
+    const professionals: Record<string, number> = {};
+    template.professional_names.forEach((name) => {
+      const p = findPrice(name);
+      if (p) professionals[p.id] = (professionals[p.id] || 0) + 1;
+    });
+    setSelectedProfessionals(professionals);
   }
 
   function applyDuplicate(budget: Budget) {
@@ -321,65 +296,156 @@ export function BudgetCreate() {
       start_date: budget.production.start_date || '',
       delivery_days: budget.production.delivery_days,
     });
-    setServices(budget.services.map((item) => ({ ...item, id: generateId() })));
-    setReels(budget.reels.map((item) => ({ ...item, id: generateId() })));
-    setEquipment(budget.equipment.map((item) => ({ ...item, id: generateId() })));
-    setProfessionals(budget.professionals.map((item) => ({ ...item, id: generateId() })));
+
+    const services: Record<string, number> = {};
+    budget.services.forEach((item) => {
+      if (item.price_list_id) services[item.price_list_id] = item.quantity;
+    });
+    setSelectedServices(services);
+
+    const reels: Record<string, number> = {};
+    budget.reels.forEach((item, i) => {
+      reels[`reel-${i}`] = item.quantity;
+    });
+    setSelectedReels(reels);
+
+    const equipment: Record<string, number> = {};
+    budget.equipment.forEach((item, i) => {
+      equipment[`eq-${i}`] = item.days;
+    });
+    setSelectedEquipment(equipment);
+
+    const professionals: Record<string, number> = {};
+    budget.professionals.forEach((item, i) => {
+      professionals[`prof-${i}`] = item.days;
+    });
+    setSelectedProfessionals(professionals);
   }
 
   // ----- Cálculos (preview instantâneo) -----
+  const servicesList = useMemo(
+    () =>
+      Object.entries(selectedServices).map(([priceId, qty]) => {
+        const price = priceList.find((p) => p.id === priceId);
+        if (!price) return null;
+        return {
+          id: priceId,
+          category: price.category,
+          name: price.name,
+          quantity: qty,
+          unit_price: price.sale_price,
+          cost_price: price.cost_price,
+          subtotal: qty * price.sale_price,
+        };
+      }).filter(Boolean) as BudgetItem[],
+    [selectedServices, priceList],
+  );
+
+  const reelsList = useMemo(
+    () =>
+      Object.entries(selectedReels).map(([priceId, qty]) => {
+        const price = priceList.find((p) => p.id === priceId);
+        if (!price) return null;
+        return {
+          id: priceId,
+          name: price.name,
+          quantity: qty,
+          unit_price: price.sale_price,
+          cost_price: price.cost_price,
+          subtotal: qty * price.sale_price,
+        };
+      }).filter(Boolean) as ReelItem[],
+    [selectedReels, priceList],
+  );
+
+  const equipmentList = useMemo(
+    () =>
+      Object.entries(selectedEquipment).map(([priceId, qty]) => {
+        const price = priceList.find((p) => p.id === priceId);
+        if (!price) return null;
+        return {
+          id: priceId,
+          name: price.name,
+          daily_rate: price.sale_price,
+          days: qty,
+          cost_price: price.cost_price,
+          subtotal: qty * price.sale_price,
+          pickup_date: undefined,
+          return_date: undefined,
+        };
+      }).filter(Boolean) as EquipmentItem[],
+    [selectedEquipment, priceList],
+  );
+
+  const professionalsList = useMemo(
+    () =>
+      Object.entries(selectedProfessionals).map(([priceId, qty]) => {
+        const price = priceList.find((p) => p.id === priceId);
+        if (!price) return null;
+        return {
+          id: priceId,
+          name: price.name,
+          daily_rate: price.sale_price,
+          days: qty,
+          cost_price: price.cost_price,
+          subtotal: qty * price.sale_price,
+        };
+      }).filter(Boolean) as ProfessionalItem[],
+    [selectedProfessionals, priceList],
+  );
+
   const allPricedItems: PricedItem[] = useMemo(
     () => [
-      ...services.map((item) => ({ quantity: item.quantity, unit_price: item.unit_price, cost_price: item.cost_price })),
-      ...equipment.map((item) => ({ quantity: item.days, unit_price: item.daily_rate, cost_price: item.cost_price })),
-      ...professionals.map((item) => ({ quantity: item.days, unit_price: item.daily_rate, cost_price: item.cost_price })),
-      ...reels.map((item) => ({ quantity: item.quantity, unit_price: item.unit_price, cost_price: item.cost_price })),
+      ...servicesList.map((item) => ({ quantity: item.quantity, unit_price: item.unit_price, cost_price: item.cost_price, name: item.name })),
+      ...reelsList.map((item) => ({ quantity: item.quantity, unit_price: item.unit_price, cost_price: item.cost_price, name: item.name })),
+      ...equipmentList.map((item) => ({ quantity: item.days, unit_price: item.daily_rate, cost_price: item.cost_price, name: item.name })),
+      ...professionalsList.map((item) => ({ quantity: item.days, unit_price: item.daily_rate, cost_price: item.cost_price, name: item.name })),
     ],
-    [services, equipment, professionals, reels],
+    [servicesList, reelsList, equipmentList, professionalsList],
   );
 
-  const totalSale = useMemo(() => calcTotalSale(allPricedItems), [allPricedItems]);
   const categorySummary = useMemo(() => {
-    return [
-      ...services.map((item) => ({ category: item.category, subtotal: item.subtotal, items: 1 })),
-      ...reels.map((item) => ({ category: 'Reels', subtotal: item.subtotal, items: 1 })),
-      ...equipment.map((item) => ({ category: 'Equipamentos', subtotal: item.subtotal, items: 1 })),
-      ...professionals.map((item) => ({ category: 'Profissionais', subtotal: item.subtotal, items: 1 })),
-    ];
-  }, [services, equipment, professionals, reels]).reduce<{ category: string; subtotal: number; items: number }[]>(
-    (acc, row) => {
-      const existing = acc.find((a) => a.category === row.category);
-      if (existing) {
-        existing.subtotal += row.subtotal;
-        existing.items += 1;
-      } else {
-        acc.push({ ...row });
-      }
-      return acc;
-    },
-    [],
-  );
+    const map = new Map<string, { subtotal: number; items: number }>();
+    servicesList.forEach((item) => {
+      const current = map.get(item.category) ?? { subtotal: 0, items: 0 };
+      current.subtotal += item.subtotal;
+      current.items += 1;
+      map.set(item.category, current);
+    });
+    if (reelsList.length > 0) {
+      const current = map.get('Reels') ?? { subtotal: 0, items: 0 };
+      current.subtotal += reelsList.reduce((s, r) => s + r.subtotal, 0);
+      current.items += reelsList.length;
+      map.set('Reels', current);
+    }
+    if (equipmentList.length > 0) {
+      const current = map.get('Equipamentos') ?? { subtotal: 0, items: 0 };
+      current.subtotal += equipmentList.reduce((s, e) => s + e.subtotal, 0);
+      current.items += equipmentList.length;
+      map.set('Equipamentos', current);
+    }
+    if (professionalsList.length > 0) {
+      const current = map.get('Profissionais') ?? { subtotal: 0, items: 0 };
+      current.subtotal += professionalsList.reduce((s, p) => s + p.subtotal, 0);
+      current.items += professionalsList.length;
+      map.set('Profissionais', current);
+    }
+    return Array.from(map.entries())
+      .map(([category, value]) => ({ category, ...value }))
+      .sort((a, b) => b.subtotal - a.subtotal);
+  }, [servicesList, reelsList, equipmentList, professionalsList]);
 
   const financials = useMemo(
-    () =>
-      calcFinancials(
-        [
-          ...services.map((item) => ({ name: item.name, quantity: item.quantity, unit_price: item.unit_price, cost_price: item.cost_price })),
-          ...reels.map((item) => ({ name: item.name, quantity: item.quantity, unit_price: item.unit_price, cost_price: item.cost_price })),
-          ...equipment.map((item) => ({ name: item.name, quantity: item.days, unit_price: item.daily_rate, cost_price: item.cost_price })),
-          ...professionals.map((item) => ({ name: item.name, quantity: item.days, unit_price: item.daily_rate, cost_price: item.cost_price })),
-        ],
-        settings,
-      ),
-    [services, reels, equipment, professionals, settings],
+    () => calcFinancials(allPricedItems, settings),
+    [allPricedItems, settings],
   );
 
   function canContinue() {
     if (step === 1) return client.name.trim() !== '' && client.email.trim() !== '';
     if (step === 2) return project.name.trim() !== '';
     if (step === 3) return production.shooting_days > 0 && production.city.trim() !== '';
-    if (step === 4) return services.length > 0;
-    if (step === 5) return reels.length > 0;
+    if (step === 4) return Object.keys(selectedServices).length > 0;
+    if (step === 5) return Object.keys(selectedReels).length > 0;
     if (step === 8) return production.delivery_days > 0;
     return true;
   }
@@ -391,6 +457,7 @@ export function BudgetCreate() {
     expires.setDate(expires.getDate() + settings.proposal_validity_days);
     const budgetId = generateId();
     const clientId = generateId();
+
     const budget: Budget = {
       id: budgetId,
       client_id: clientId,
@@ -402,10 +469,10 @@ export function BudgetCreate() {
       project_type: project.type,
       project_description: project.description,
       production,
-      services: services.map((item) => ({ ...item, budget_id: budgetId })),
-      reels: reels.map((item) => ({ ...item })),
-      equipment: equipment.map((item) => ({ ...item })),
-      professionals: professionals.map((item) => ({ ...item })),
+      services: servicesList.map((item) => ({ ...item, id: generateId(), budget_id: budgetId, custom_pricing: false, price_list_id: item.id })),
+      reels: reelsList.map((item) => ({ ...item, id: generateId() })),
+      equipment: equipmentList.map((item) => ({ ...item, id: generateId() })),
+      professionals: professionalsList.map((item) => ({ ...item, id: generateId() })),
       status,
       created_at: now.toISOString(),
       updated_at: now.toISOString(),
@@ -416,11 +483,18 @@ export function BudgetCreate() {
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/(^-|-$)/g, '')}-${budgetId.slice(0, 6)}`,
-      ...financials,
+      cost_total: financials.cost_total,
+      fee_value: financials.fee_value,
+      tax_value: financials.tax_value,
+      final_price: financials.final_price,
+      profit: financials.profit,
+      margin: financials.margin,
+      material_bruto_value: financials.material_bruto_value,
       type: project.type,
       budget_date: now.toISOString(),
       client_phone: client.whatsapp,
     };
+
     await supabase.from('clients').insert({ id: clientId, ...client, created_at: now.toISOString() });
     await supabase.from('budgets').insert(budget);
     await supabase.from('budget_items').insert(budget.services || []);
@@ -442,7 +516,7 @@ export function BudgetCreate() {
               {t.newBudget}
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-white/45">
-              Fluxo guiado para transformar briefing, produção e investimento em uma proposta premium.
+              Clique nos serviços para adicionar. Use a Tabela de Preços para gerenciar itens e valores.
             </p>
           </div>
           <div className="shrink-0 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-center text-xs text-white/45">
@@ -450,7 +524,7 @@ export function BudgetCreate() {
           </div>
         </motion.div>
 
-        <div className="grid gap-8 lg:grid-cols-[260px_1fr_320px]">
+        <div className="grid gap-8 lg:grid-cols-[260px_1fr_340px]">
           <aside className="space-y-2 lg:sticky lg:top-8 lg:h-fit">
             {STEPS.map((label, index) => {
               const number = index + 1;
@@ -526,7 +600,7 @@ export function BudgetCreate() {
                       onChange={(e) => setProject({ ...project, description: e.target.value })}
                       rows={3}
                       className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white transition focus:border-white/35"
-                      placeholder="Contexto e objetivo do projeto (pode detalhar mais na etapa de Escopo)."
+                      placeholder="Contexto e objetivo do projeto (detalhe mais na etapa de Escopo)."
                     />
                   </div>
                   <div className="sm:col-span-2 border-t border-white/10 pt-5">
@@ -555,10 +629,10 @@ export function BudgetCreate() {
               {step === 3 && (
                 <StepPanel key="production" title={t.steps.production} subtitle="Dados de operação que impactam logística e calendário.">
                   <Input
-                    label={t.shootingDays}
+                    label={t.deliveryTime}
                     type="number"
-                    value={String(production.shooting_days)}
-                    onChange={(v) => setProduction({ ...production, shooting_days: Number(v) })}
+                    value={String(production.delivery_days)}
+                    onChange={(v) => setProduction({ ...production, delivery_days: Number(v) })}
                   />
                   <Input label={t.city} value={production.city} onChange={(v) => setProduction({ ...production, city: v })} />
                   <Toggle
@@ -574,13 +648,53 @@ export function BudgetCreate() {
                 </StepPanel>
               )}
 
-              {step === 4 && <ServicesStep services={services} priceList={priceList} onAdd={addService} onUpdate={updateService} onRemove={removeService} onAddCustom={addCustomService} />}
+              {step === 4 && (
+                <SelectStep
+                  title={t.steps.services}
+                  subtitle="Clique nos serviços para adicionar à proposta."
+                  categories={SELECTABLE_CATEGORIES}
+                  priceList={priceList}
+                  selected={selectedServices}
+                  onToggle={handleServiceClick}
+                  onQtyChange={updateServiceQty}
+                />
+              )}
 
-              {step === 5 && <ReelsStep reels={reels} onAdd={addReel} onUpdate={updateReel} onRemove={removeReel} />}
+              {step === 5 && (
+                <SelectStep
+                  title={t.steps.reels}
+                  subtitle="Clique nos reels para adicionar. Cada um tem valor unitário próprio."
+                  categories={['Reels']}
+                  priceList={priceList}
+                  selected={selectedReels}
+                  onToggle={toggleReel}
+                  onQtyChange={updateReelQty}
+                />
+              )}
 
-              {step === 6 && <EquipmentStep equipment={equipment} onAdd={addEquipment} onUpdate={updateEquipment} onRemove={removeEquipment} />}
+              {step === 6 && (
+                <SelectStep
+                  title={t.steps.equipment}
+                  subtitle="Clique nos equipamentos. O valor é calculado por diária × dias."
+                  categories={['Equipamentos']}
+                  priceList={priceList}
+                  selected={selectedEquipment}
+                  onToggle={toggleEquipment}
+                  onQtyChange={updateEquipmentQty}
+                />
+              )}
 
-              {step === 7 && <ProfessionalsStep professionals={professionals} onAdd={addProfessional} onUpdate={updateProfessional} onRemove={removeProfessional} />}
+              {step === 7 && (
+                <SelectStep
+                  title={t.steps.professionals}
+                  subtitle="Clique nos profissionais. O valor é calculado por diária × dias."
+                  categories={['Profissionais']}
+                  priceList={priceList}
+                  selected={selectedProfessionals}
+                  onToggle={toggleProfessional}
+                  onQtyChange={updateProfessionalQty}
+                />
+              )}
 
               {step === 8 && (
                 <StepPanel key="scope" title={t.steps.scope} subtitle="Descreva detalhadamente o projeto, contexto, objetivos e referências.">
@@ -614,7 +728,7 @@ export function BudgetCreate() {
                 </StepPanel>
               )}
 
-              {step === 10 && <FinancialStep financials={financials} categorySummary={categorySummary} totalSale={totalSale} />}
+              {step === 10 && <FinancialStep financials={financials} categorySummary={categorySummary} />}
 
               {step === 11 && <ProposalStep onSave={saveBudget} saving={saving} />}
             </AnimatePresence>
@@ -649,17 +763,60 @@ export function BudgetCreate() {
 
           <aside className="lg:sticky lg:top-8 lg:h-fit">
             <LivePreview
-              services={services}
-              reels={reels}
-              equipment={equipment}
-              professionals={professionals}
+              services={servicesList}
+              reels={reelsList}
+              equipment={equipmentList}
+              professionals={professionalsList}
               categorySummary={categorySummary}
-              totalSale={totalSale}
               financials={financials}
             />
           </aside>
         </div>
       </div>
+
+      {/* Modal de Variante */}
+      {variantModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setVariantModal(null)}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-sm rounded-3xl border border-white/10 bg-sim-dark p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-6 flex items-center justify-between">
+              <h3 className="font-display text-xl text-white">Selecionar formato</h3>
+              <button onClick={() => setVariantModal(null)} className="rounded-lg p-2 text-white/40 hover:bg-white/10 hover:text-white">
+                <X size={18} />
+              </button>
+            </div>
+            <p className="mb-6 text-sm text-white/50">
+              "{variantModal.price.name}" está disponível em dois formatos. Escolha qual adicionar:
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={() => selectVariant('Reels')}
+                className="w-full rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left transition hover:border-white/25 hover:bg-white/[0.06]"
+              >
+                <p className="text-sm font-medium text-white">Edição de Reel</p>
+                <p className="mt-1 text-xs text-white/40">Formato vertical para redes sociais</p>
+                <p className="mt-2 text-sm font-display text-white">
+                  {formatCurrency(priceList.find((p) => p.name === 'Edição de Reel')?.sale_price || 180)}
+                </p>
+              </button>
+              <button
+                onClick={() => selectVariant('Wide')}
+                className="w-full rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left transition hover:border-white/25 hover:bg-white/[0.06]"
+              >
+                <p className="text-sm font-medium text-white">Edição de Vídeo (Wide)</p>
+                <p className="mt-1 text-xs text-white/40">Formato horizontal 16:9</p>
+                <p className="mt-2 text-sm font-display text-white">
+                  {formatCurrency(priceList.find((p) => p.name === 'Edição de Vídeo')?.sale_price || 3600)}
+                </p>
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </Layout>
   );
 }
@@ -731,51 +888,26 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
   );
 }
 
-function Section({ title, onAdd, children }: { title: string; onAdd: () => void; children: React.ReactNode }) {
-  return (
-    <div className="sm:col-span-2 space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-white">{title}</h3>
-        <button
-          onClick={onAdd}
-          className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70 transition hover:bg-white/10 hover:text-white"
-        >
-          <Plus size={14} /> {t.addItem}
-        </button>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="rounded-2xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-white/35">
-      {message}
-    </div>
-  );
-}
-
-// =================== Etapas específicas ===================
-
-function ServicesStep({
-  services,
+// Etapa de seleção "clicar e adicionar"
+function SelectStep({
+  title,
+  subtitle,
+  categories,
   priceList,
-  onAdd,
-  onUpdate,
-  onRemove,
-  onAddCustom,
+  selected,
+  onToggle,
+  onQtyChange,
 }: {
-  services: BudgetItem[];
+  title: string;
+  subtitle: string;
+  categories: string[];
   priceList: PriceListItem[];
-  onAdd: (p: PriceListItem) => void;
-  onUpdate: (id: string, u: Partial<BudgetItem>) => void;
-  onRemove: (id: string) => void;
-  onAddCustom: () => void;
+  selected: Record<string, number>;
+  onToggle: (price: PriceListItem) => void;
+  onQtyChange: (priceId: string, qty: number) => void;
 }) {
-  const categories = SERVICE_CATEGORIES.filter((c) => c !== 'Reels');
   return (
-    <StepPanel title={t.steps.services} subtitle="Selecione serviços pela tabela master 2025.">
+    <StepPanel title={title} subtitle={subtitle}>
       <div className="sm:col-span-2 space-y-8">
         {categories.map((category) => {
           const items = priceList.filter((p) => p.category === category && p.active);
@@ -785,295 +917,65 @@ function ServicesStep({
               <h4 className="mb-3 text-xs uppercase tracking-[0.28em] text-white/30">{category}</h4>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {items.map((price) => {
-                  const selected = services.some((s) => s.price_list_id === price.id);
+                  const qty = selected[price.id] || 0;
+                  const isSelected = qty > 0;
                   return (
-                    <button
+                    <div
                       key={price.id}
-                      onClick={() => onAdd(price)}
-                      className={`group min-h-[110px] w-full rounded-2xl border p-4 text-left transition ${
-                        selected
+                      className={`group min-h-[110px] w-full rounded-2xl border p-4 transition ${
+                        isSelected
                           ? 'border-white bg-white text-black'
                           : 'border-white/10 bg-white/[0.03] text-white hover:border-white/25 hover:bg-white/[0.06]'
                       }`}
                     >
-                      <div className="mb-4 flex min-w-0 items-start justify-between gap-2">
+                      <button
+                        onClick={() => onToggle(price)}
+                        className="mb-3 flex w-full items-start justify-between gap-2 text-left"
+                      >
                         <p className="min-w-0 flex-1 text-sm font-medium break-words">{price.name}</p>
-                        <Plus
-                          size={16}
-                          className={`mt-0.5 shrink-0 ${selected ? 'text-black' : 'text-white/30 group-hover:text-white'}`}
-                        />
+                        <span
+                          className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                            isSelected ? 'bg-black text-white' : 'bg-white/10 text-white/50'
+                          }`}
+                        >
+                          {isSelected ? <Check size={14} /> : <Plus size={14} />}
+                        </span>
+                      </button>
+                      <div className="flex items-center justify-between gap-2 text-xs opacity-60">
+                        <span className="truncate font-medium">
+                          R$ {price.sale_price.toLocaleString('pt-BR')}
+                        </span>
+                        {isSelected && (
+                          <div className="flex items-center gap-1 rounded-lg bg-black/10 px-2 py-1">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onQtyChange(price.id, qty - 1);
+                              }}
+                              className="hover:text-black"
+                            >
+                              <Minus size={12} />
+                            </button>
+                            <span className="w-4 text-center font-bold text-black">{qty}</span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onQtyChange(price.id, qty + 1);
+                              }}
+                              className="hover:text-black"
+                            >
+                              <Plus size={12} />
+                            </button>
+                          </div>
+                        )}
                       </div>
-                      <div className="flex justify-between gap-2 text-xs opacity-60">
-                        <span className="truncate">R$ {price.sale_price.toLocaleString('pt-BR')}</span>
-                        <span className="truncate opacity-60">+R$ {price.cost_price.toLocaleString('pt-BR')}</span>
-                      </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
             </section>
           );
         })}
-
-        <Section title="Itens personalizados" onAdd={onAddCustom}>
-          {services.length === 0 && <EmptyState message="Nenhum item adicionado" />}
-          {services.map((item) => (
-            <div
-              key={item.id}
-              className="grid gap-3 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] p-3 md:grid-cols-[minmax(0,1.5fr)_80px_120px_120px_40px] md:items-center"
-            >
-              <div className="min-w-0">
-                <p className="text-[10px] uppercase tracking-wider text-white/30">{item.category}</p>
-                <input
-                  type="text"
-                  value={item.name}
-                  onChange={(e) => onUpdate(item.id, { name: e.target.value })}
-                  className="w-full bg-transparent text-sm font-medium text-white focus:outline-none"
-                />
-              </div>
-              <NumberInput value={item.quantity} onChange={(v) => onUpdate(item.id, { quantity: v })} />
-              <MoneyInput label="Unit." value={item.unit_price} onChange={(v) => onUpdate(item.id, { unit_price: v })} />
-              <MoneyInput label="Custo" value={item.cost_price} onChange={(v) => onUpdate(item.id, { cost_price: v })} />
-              <button
-                onClick={() => onRemove(item.id)}
-                className="rounded-xl p-2 text-white/30 hover:bg-red-500/10 hover:text-red-400"
-                title={t.removeItem}
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          ))}
-        </Section>
-      </div>
-    </StepPanel>
-  );
-}
-
-function ReelsStep({
-  reels,
-  onAdd,
-  onUpdate,
-  onRemove,
-}: {
-  reels: ReelItem[];
-  onAdd: () => void;
-  onUpdate: (id: string, u: Partial<ReelItem>) => void;
-  onRemove: (id: string) => void;
-}) {
-  return (
-    <StepPanel title={t.steps.reels} subtitle="Categoria independente — cada reel tem valor unitário próprio.">
-      <div className="sm:col-span-2 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-white">Reels</h3>
-          <button
-            onClick={onAdd}
-            className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70 transition hover:bg-white/10 hover:text-white"
-          >
-            <Plus size={14} /> {t.addItem}
-          </button>
-        </div>
-        {reels.length === 0 && <EmptyState message="Adicione reels com valor unitário próprio" />}
-        <div className="space-y-3">
-          {reels.map((reel, index) => (
-            <div
-              key={reel.id}
-              className="grid gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 md:grid-cols-[60px_minmax(0,1.5fr)_90px_120px_120px_40px] md:items-center"
-            >
-              <span className="text-xs text-white/30">#{index + 1}</span>
-              <input
-                type="text"
-                value={reel.name}
-                onChange={(e) => onUpdate(reel.id, { name: e.target.value })}
-                placeholder="Nome do reel"
-                className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-white/35"
-              />
-              <NumberInput value={reel.quantity} onChange={(v) => onUpdate(reel.id, { quantity: v })} />
-              <MoneyInput label="Unit." value={reel.unit_price} onChange={(v) => onUpdate(reel.id, { unit_price: v })} />
-              <MoneyInput label="Custo" value={reel.cost_price} onChange={(v) => onUpdate(reel.id, { cost_price: v })} />
-              <button
-                onClick={() => onRemove(reel.id)}
-                className="rounded-xl p-2 text-white/30 hover:bg-red-500/10 hover:text-red-400"
-                title={t.removeItem}
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-    </StepPanel>
-  );
-}
-
-function EquipmentStep({
-  equipment,
-  onAdd,
-  onUpdate,
-  onRemove,
-}: {
-  equipment: EquipmentItem[];
-  onAdd: () => void;
-  onUpdate: (id: string, u: Partial<EquipmentItem>) => void;
-  onRemove: (id: string) => void;
-}) {
-  return (
-    <StepPanel title={t.steps.equipment} subtitle="Equipamentos alugados por diária, com datas de locação.">
-      <div className="sm:col-span-2 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-white">Equipamentos</h3>
-          <button
-            onClick={onAdd}
-            className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70 transition hover:bg-white/10 hover:text-white"
-          >
-            <Plus size={14} /> {t.addItem}
-          </button>
-        </div>
-        {equipment.length === 0 && <EmptyState message="Adicione equipamentos" />}
-        <div className="space-y-3">
-          {equipment.map((item) => (
-            <div
-              key={item.id}
-              className="grid gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 md:grid-cols-[minmax(0,1.4fr)_120px_70px_140px_140px_120px_40px] md:items-end"
-            >
-              <Field label="Nome">
-                <input
-                  type="text"
-                  value={item.name}
-                  onChange={(e) => onUpdate(item.id, { name: e.target.value })}
-                  placeholder="Ex: Câmera"
-                  className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-white/35"
-                />
-              </Field>
-              <Field label="Diária (R$)">
-                <input
-                  type="number"
-                  value={item.daily_rate}
-                  onChange={(e) => onUpdate(item.id, { daily_rate: Number(e.target.value) })}
-                  className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-white/35"
-                />
-              </Field>
-              <Field label="Dias">
-                <input
-                  type="number"
-                  min={1}
-                  value={item.days}
-                  onChange={(e) => onUpdate(item.id, { days: Number(e.target.value) })}
-                  className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-white/35"
-                />
-              </Field>
-              <Field label="Retirada">
-                <input
-                  type="date"
-                  value={item.pickup_date || ''}
-                  onChange={(e) => onUpdate(item.id, { pickup_date: e.target.value })}
-                  className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-white/35"
-                />
-              </Field>
-              <Field label="Devolução">
-                <input
-                  type="date"
-                  value={item.return_date || ''}
-                  onChange={(e) => onUpdate(item.id, { return_date: e.target.value })}
-                  className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-white/35"
-                />
-              </Field>
-              <Field label="Custo">
-                <input
-                  type="number"
-                  value={item.cost_price}
-                  onChange={(e) => onUpdate(item.id, { cost_price: Number(e.target.value) })}
-                  className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-white/35"
-                />
-              </Field>
-              <button
-                onClick={() => onRemove(item.id)}
-                className="self-center rounded-xl p-2 text-white/30 hover:bg-red-500/10 hover:text-red-400"
-                title={t.removeItem}
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-    </StepPanel>
-  );
-}
-
-function ProfessionalsStep({
-  professionals,
-  onAdd,
-  onUpdate,
-  onRemove,
-}: {
-  professionals: ProfessionalItem[];
-  onAdd: () => void;
-  onUpdate: (id: string, u: Partial<ProfessionalItem>) => void;
-  onRemove: (id: string) => void;
-}) {
-  return (
-    <StepPanel title={t.steps.professionals} subtitle="Profissionais contratados por diária.">
-      <div className="sm:col-span-2 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-white">Profissionais</h3>
-          <button
-            onClick={onAdd}
-            className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70 transition hover:bg-white/10 hover:text-white"
-          >
-            <Plus size={14} /> {t.addItem}
-          </button>
-        </div>
-        {professionals.length === 0 && <EmptyState message="Adicione profissionais" />}
-        <div className="space-y-3">
-          {professionals.map((item) => (
-            <div
-              key={item.id}
-              className="grid gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 md:grid-cols-[minmax(0,1.4fr)_120px_70px_120px_40px] md:items-end"
-            >
-              <Field label="Nome do profissional">
-                <input
-                  type="text"
-                  value={item.name}
-                  onChange={(e) => onUpdate(item.id, { name: e.target.value })}
-                  placeholder="Ex: Diretor"
-                  className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-white/35"
-                />
-              </Field>
-              <Field label="Diária (R$)">
-                <input
-                  type="number"
-                  value={item.daily_rate}
-                  onChange={(e) => onUpdate(item.id, { daily_rate: Number(e.target.value) })}
-                  className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-white/35"
-                />
-              </Field>
-              <Field label="Dias">
-                <input
-                  type="number"
-                  min={1}
-                  value={item.days}
-                  onChange={(e) => onUpdate(item.id, { days: Number(e.target.value) })}
-                  className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-white/35"
-                />
-              </Field>
-              <Field label="Custo">
-                <input
-                  type="number"
-                  value={item.cost_price}
-                  onChange={(e) => onUpdate(item.id, { cost_price: Number(e.target.value) })}
-                  className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-white/35"
-                />
-              </Field>
-              <button
-                onClick={() => onRemove(item.id)}
-                className="self-center rounded-xl p-2 text-white/30 hover:bg-red-500/10 hover:text-red-400"
-                title={t.removeItem}
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          ))}
-        </div>
       </div>
     </StepPanel>
   );
@@ -1082,26 +984,21 @@ function ProfessionalsStep({
 function FinancialStep({
   financials,
   categorySummary,
-  totalSale,
 }: {
   financials: ReturnType<typeof calcFinancials>;
   categorySummary: { category: string; subtotal: number; items: number }[];
-  totalSale: number;
 }) {
   return (
     <StepPanel title={t.steps.financial} subtitle="Cálculo automático baseado em quantidade × valor unitário.">
-      <div className="sm:col-span-2 rounded-3xl border border-white/10 bg-black/30 p-6">
+      <div className="sm:col-span-2 rounded-3xl border border-accent/30 bg-accent/[0.06] p-8">
         <p className="mb-2 text-xs uppercase tracking-[0.22em] text-accent">{t.finalPriceLabel}</p>
-        <p className="font-display text-4xl text-white md:text-5xl">{financials.final_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-4">
-          <Metric label={t.totalSale} value={totalSale.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} />
-          <Metric label={t.totalCost} value={financials.cost_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} />
-          <Metric label={t.fee} value={financials.fee_value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} />
-          <Metric label={t.tax} value={financials.tax_value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} />
-        </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <Metric label={t.profit} value={financials.profit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} positive />
-          <Metric label={t.margin} value={formatPercent(financials.margin)} />
+        <p className="font-display text-5xl text-white md:text-7xl">
+          {financials.final_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+        </p>
+        <div className="mt-8 grid gap-4 sm:grid-cols-3">
+          <Metric label="Subtotal" value={financials.subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} />
+          <Metric label={`Fee (${t.fee})`} value={financials.fee_value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} />
+          <Metric label={`Impostos (${t.tax})`} value={financials.tax_value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} />
         </div>
       </div>
 
@@ -1151,7 +1048,6 @@ function LivePreview({
   equipment,
   professionals,
   categorySummary,
-  totalSale,
   financials,
 }: {
   services: BudgetItem[];
@@ -1159,29 +1055,28 @@ function LivePreview({
   equipment: EquipmentItem[];
   professionals: ProfessionalItem[];
   categorySummary: { category: string; subtotal: number; items: number }[];
-  totalSale: number;
   financials: ReturnType<typeof calcFinancials>;
 }) {
   const hasAny = services.length + reels.length + equipment.length + professionals.length > 0;
   return (
     <div className="space-y-4">
-      <div className="rounded-3xl border border-white/10 bg-gradient-to-b from-white/[0.06] to-white/[0.02] p-5">
-        <p className="mb-1 text-xs uppercase tracking-[0.22em] text-accent">Pré-visualização</p>
-        <p className="text-sm text-white/45">Atualiza em tempo real conforme você edita.</p>
-        <div className="mt-5 space-y-3">
-          <PreviewRow label="Serviços" count={services.length} subtotal={services.reduce((s, i) => s + i.subtotal, 0)} />
-          <PreviewRow label="Reels" count={reels.length} subtotal={reels.reduce((s, i) => s + i.subtotal, 0)} />
-          <PreviewRow label="Equipamentos" count={equipment.length} subtotal={equipment.reduce((s, i) => s + i.subtotal, 0)} />
-          <PreviewRow label="Profissionais" count={professionals.length} subtotal={professionals.reduce((s, i) => s + i.subtotal, 0)} />
-        </div>
-        <div className="mt-5 border-t border-white/10 pt-4">
-          <p className="text-xs uppercase tracking-wider text-white/30">Subtotal</p>
-          <p className="mt-1 font-display text-2xl text-white">{totalSale.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+      <div className="rounded-3xl border border-accent/30 bg-accent/[0.06] p-5">
+        <p className="mb-1 text-xs uppercase tracking-[0.22em] text-accent">Total Geral</p>
+        <p className="font-display text-4xl text-white">
+          {financials.final_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+        </p>
+        <div className="mt-4 space-y-2 text-sm">
+          <PreviewRow label="Subtotal" value={financials.subtotal} />
+          <PreviewRow label="Fee" value={financials.fee_value} />
+          <PreviewRow label="Impostos" value={financials.tax_value} />
         </div>
         <div className="mt-4 rounded-2xl bg-black/30 p-4">
-          <p className="text-[10px] uppercase tracking-[0.22em] text-accent">Investimento final</p>
-          <p className="mt-1 font-display text-3xl text-white">{financials.final_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
-          <p className="mt-1 text-[10px] text-white/40">Lucro {financials.profit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} · Margem {formatPercent(financials.margin)}</p>
+          <p className="text-[10px] uppercase tracking-[0.22em] text-white/30">Controle interno</p>
+          <div className="mt-2 space-y-1 text-xs text-white/40">
+            <p>Custo: {financials.cost_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+            <p>Lucro: {financials.profit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+            <p>Margem: {formatPercent(financials.margin)}</p>
+          </div>
         </div>
       </div>
 
@@ -1191,7 +1086,9 @@ function LivePreview({
           <div className="space-y-2">
             {categorySummary.map((cat) => (
               <div key={cat.category} className="flex items-center justify-between text-sm">
-                <span className="text-white/55">{cat.category}</span>
+                <span className="text-white/55">
+                  {cat.category} <span className="text-white/30">({cat.items})</span>
+                </span>
                 <span className="text-white/85">{cat.subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
               </div>
             ))}
@@ -1202,61 +1099,22 @@ function LivePreview({
   );
 }
 
-function PreviewRow({ label, count, subtotal }: { label: string; count: number; subtotal: number }) {
+function PreviewRow({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex items-center justify-between text-sm">
-      <span className="text-white/55">
-        {label} <span className="text-white/30">({count})</span>
-      </span>
-      <span className="text-white">{subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+      <span className="text-white/55">{label}</span>
+      <span className="text-white">{value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
     </div>
   );
 }
 
 // =================== Helpers visuais ===================
 
-function NumberInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
-  return (
-    <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/30 px-2 py-2">
-      <button onClick={() => onChange(Math.max(1, value - 1))} className="text-white/40 hover:text-white">
-        <Minus size={14} />
-      </button>
-      <span className="text-sm text-white">{value}</span>
-      <button onClick={() => onChange(value + 1)} className="text-white/40 hover:text-white">
-        <Plus size={14} />
-      </button>
-    </div>
-  );
-}
-
-function MoneyInput({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-[10px] uppercase tracking-wider text-white/25">{label}</span>
-      <input
-        type="number"
-        value={Math.round(value)}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-white/35"
-      />
-    </label>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-[10px] uppercase tracking-wider text-white/25">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function Metric({ label, value, positive }: { label: string; value: string; positive?: boolean }) {
+function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
       <p className="text-[10px] uppercase tracking-[0.22em] text-white/30">{label}</p>
-      <p className={`mt-1 font-display text-lg ${positive ? 'text-emerald-400' : 'text-white'}`}>{value}</p>
+      <p className="mt-1 font-display text-lg text-white">{value}</p>
     </div>
   );
 }
