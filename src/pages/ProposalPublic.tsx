@@ -20,9 +20,9 @@ export function ProposalPublic() {
   }, [slug]);
 
   async function load() {
-    const result = await supabase.from('budgets').select().data();
-    const found = ((result.data || []) as Budget[]).find((item) => item.online_slug === slug || item.id === slug) || null;
-    setBudget(found);
+    // Audit-fix: secure, direct lookup using .eq().single() to prevent leak of all database records to the client
+    const { data } = await supabase.from('budgets').select().eq('online_slug', slug || '').single();
+    setBudget(data as Budget | null);
     setLoading(false);
   }
 

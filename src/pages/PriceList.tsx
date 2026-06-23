@@ -111,6 +111,49 @@ export function PriceList() {
           <SettingField label={t.proposalValidity} value={settings.proposal_validity_days} onChange={(v) => setSettings({ ...settings, proposal_validity_days: v })} suffix={t.days.toLowerCase()} />
         </section>
 
+        {/* Audit: LGPD Data Compliance Section (Portability & Erase Right) */}
+        <section className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-6 space-y-4">
+          <h2 className="text-sm font-semibold tracking-wider text-accent uppercase">LGPD · Proteção de Dados e Portabilidade</h2>
+          <p className="text-xs text-white/40 leading-relaxed max-w-3xl">
+            Em conformidade com a LGPD (Lei Geral de Proteção de Dados, Lei nº 13.709/18, Art. 18), você pode exportar todos os registros de clientes e propostas gerados na plataforma ou apagar todos os registros permanentemente de forma segura (Direito ao Esquecimento).
+          </p>
+          <div className="flex flex-wrap gap-3 pt-2">
+            <button
+              onClick={() => {
+                const data = {
+                  clients: localStorage.getItem('sim_clients') ? JSON.parse(localStorage.getItem('sim_clients')!) : [],
+                  budgets: localStorage.getItem('sim_budgets_v2') ? JSON.parse(localStorage.getItem('sim_budgets_v2')!) : [],
+                  settings: localStorage.getItem('sim_system_settings') ? JSON.parse(localStorage.getItem('sim_system_settings')!) : []
+                };
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `portabilidade-sim-budget-${new Date().toISOString().slice(0,10)}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-xs font-semibold text-white/75 transition hover:bg-white/10 hover:text-white"
+            >
+              Exportar Dossier LGPD (JSON)
+            </button>
+            <button
+              onClick={() => {
+                if (confirm("ATENÇÃO: Isso apagará PERMANENTEMENTE todos os clientes e orçamentos da base, em conformidade com o Direito ao Esquecimento da LGPD. Esta ação não pode ser desfeita. Deseja prosseguir?")) {
+                  localStorage.removeItem('sim_clients');
+                  localStorage.removeItem('sim_budgets_v2');
+                  localStorage.removeItem('sim_budget_items_v2');
+                  alert("Todos os dados pessoais e comerciais de clientes foram apagados com sucesso.");
+                  window.location.reload();
+                }
+              }}
+              className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-xs font-semibold text-red-400 transition hover:bg-red-500/20"
+            >
+              Apagar Base de Dados (Direito ao Esquecimento)
+            </button>
+          </div>
+        </section>
+
         <section className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-5">
           <div className="mb-5 flex flex-col gap-3 md:flex-row">
             <div className="relative flex-1">

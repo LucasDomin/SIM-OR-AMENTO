@@ -83,6 +83,7 @@ export function BudgetCreate() {
 
   // Estado do orçamento
   const [client, setClient] = useState({ name: '', company: '', whatsapp: '', email: '' });
+  const [lgpdConsent, setLgpdConsent] = useState(false);
   const [project, setProject] = useState({ name: '', type: 'Personalizado' as ProjectType, description: '' });
   const [production, setProduction] = useState<{
     shooting_days: number;
@@ -574,6 +575,19 @@ export function BudgetCreate() {
                   <Input label={t.company} value={client.company} onChange={(v) => setClient({ ...client, company: v })} placeholder="Nome da empresa" />
                   <Input label={t.whatsapp} value={client.whatsapp} onChange={(v) => setClient({ ...client, whatsapp: v })} placeholder="(11) 99999-9999" />
                   <Input label={t.emailField} value={client.email} onChange={(v) => setClient({ ...client, email: v })} placeholder="cliente@empresa.com" />
+                  
+                  <div className="sm:col-span-2 mt-4 flex items-start gap-3 rounded-2xl border border-white/5 bg-white/[0.02] p-4">
+                    <input
+                      type="checkbox"
+                      id="lgpd"
+                      checked={lgpdConsent}
+                      onChange={(e) => setLgpdConsent(e.target.checked)}
+                      className="mt-1 h-4 w-4 rounded border-white/10 bg-black/30 text-accent focus:ring-0 focus:ring-offset-0"
+                    />
+                    <label htmlFor="lgpd" className="text-xs leading-5 text-white/50 select-none">
+                      Confirmo que o cliente autorizou a coleta e o armazenamento de seus dados comerciais para fins exclusivos de elaboração e validade deste orçamento, em conformidade com as diretrizes da LGPD (Lei Geral de Proteção de Dados, Lei nº 13.709/18).
+                    </label>
+                  </div>
                 </StepPanel>
               )}
 
