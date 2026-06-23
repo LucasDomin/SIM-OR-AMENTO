@@ -42,8 +42,8 @@ export async function generateProposalPDF(budget: Budget, settings: SystemSettin
   // ---------- CABEÇALHO ----------
   const logoImg = await getLogoDataUrl(4);
   if (logoImg) {
-    // Logo menor, mantida íntegra (proporção ~3.5:1)
-    doc.addImage(logoImg, 'PNG', M, y, 55, 16);
+    // Proporção preservada do PNG com padding seguro: nunca corta a assinatura.
+    doc.addImage(logoImg, 'PNG', M, y - 2, 62, 21.4);
   } else {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(22);

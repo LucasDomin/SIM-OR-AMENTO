@@ -9,7 +9,7 @@ export function base64ToUint8Array(base64: string): Uint8Array {
 }
 
 // Gera uma imagem PNG (dataURL) da logo SIM a partir do SVG renderizado na página.
-// Recorta o viewBox para focar apenas na área da logo (sem espaço vazio extra).
+// Mantém uma margem de segurança no viewBox para impedir cortes no PDF.
 export async function getLogoDataUrl(scale = 4): Promise<string | null> {
   try {
     const svgEl = document.querySelector('svg[aria-label="SIM — Still In Movement"]') as SVGSVGElement | null;
@@ -20,11 +20,12 @@ export async function getLogoDataUrl(scale = 4): Promise<string | null> {
     clone.querySelectorAll('path').forEach((p) => p.setAttribute('fill', '#0a0a0a'));
     clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
 
-    // Recorta o viewBox para a área exata da logo (do "S" até o fim da barra)
-    // viewBox original: 0 0 1192 380. A logo vai de ~0 a ~1192, barra termina em y=334.
-    clone.setAttribute('viewBox', '0 0 1192 340');
-    clone.setAttribute('width', '1192');
-    clone.setAttribute('height', '340');
+    // O desenho autoral da assinatura desce até ~y=366. O recorte anterior em 340px
+    // cortava a parte inferior do "S". Usamos o viewBox original com padding.
+    const viewBox = { x: -28, y: -24, width: 1248, height: 430 };
+    clone.setAttribute('viewBox', `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
+    clone.setAttribute('width', String(viewBox.width));
+    clone.setAttribute('height', String(viewBox.height));
 
     const svgString = new XMLSerializer().serializeToString(clone);
     const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
@@ -35,8 +36,8 @@ export async function getLogoDataUrl(scale = 4): Promise<string | null> {
       img.onload = () => {
         try {
           const canvas = document.createElement('canvas');
-          canvas.width = 1192 * scale;
-          canvas.height = 340 * scale;
+          canvas.width = viewBox.width * scale;
+          canvas.height = viewBox.height * scale;
           const ctx = canvas.getContext('2d');
           if (!ctx) {
             resolve(null);
