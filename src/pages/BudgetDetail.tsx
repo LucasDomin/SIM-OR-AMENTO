@@ -129,6 +129,8 @@ export function BudgetDetail() {
                 <ActionButton onClick={() => updateStatus('Rejected')} icon={XCircle}>{t.reject}</ActionButton>
               </>
             )}
+            <ActionButton onClick={() => generatePDF(true)} icon={FileText}>{t.pdfClient}</ActionButton>
+            <ActionButton onClick={() => generatePDF(false)} icon={Download}>{t.pdfInternal}</ActionButton>
             <ActionButton onClick={duplicateBudget} icon={Copy}>{t.duplicate}</ActionButton>
           </div>
         </motion.header>
