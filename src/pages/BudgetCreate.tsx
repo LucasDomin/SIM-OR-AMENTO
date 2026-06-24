@@ -1187,13 +1187,13 @@ function EditableItemTable({
   qtyLabel: string;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 overflow-hidden">
-      <div className="px-5 py-3 bg-white/[0.03] border-b border-white/10 flex items-center justify-between">
-        <h4 className="text-sm font-semibold text-white">{title}</h4>
-        <p className="text-xs text-white/30">{items.length} {items.length === 1 ? 'item' : 'itens'}</p>
+    <div className="overflow-hidden rounded-2xl border border-white/10">
+      <div className="flex items-center justify-between border-b border-white/10 bg-white/[0.03] px-5 py-3">
+        <h4 className="min-w-0 truncate text-sm font-semibold text-white">{title}</h4>
+        <p className="shrink-0 text-xs text-white/30">{items.length} {items.length === 1 ? 'item' : 'itens'}</p>
       </div>
-      {/* Cabeçalho */}
-      <div className="hidden md:grid grid-cols-[minmax(0,1.5fr)_80px_130px_130px_100px] gap-3 px-5 py-2 bg-black/20 text-[10px] uppercase tracking-wider text-white/30">
+      {/* Cabeçalho: aparece apenas em telas muito largas para não sobrepor textos */}
+      <div className="hidden 2xl:grid 2xl:grid-cols-[minmax(180px,1fr)_76px_128px_132px_106px] gap-4 bg-black/20 px-5 py-2 text-[10px] uppercase tracking-wider text-white/30">
         <span>Item</span>
         <span>{qtyLabel}</span>
         <span>Valor Unit.</span>
@@ -1206,37 +1206,46 @@ function EditableItemTable({
         const total = item.qty * item.unit_price;
         return (
           <div key={item.id}
-            className={`grid grid-cols-1 gap-3 px-5 py-3 border-b border-white/5 last:border-0 md:grid-cols-[minmax(0,1.5fr)_80px_130px_130px_100px] md:items-center ${
+            className={`grid grid-cols-1 gap-4 border-b border-white/5 px-5 py-4 last:border-0 2xl:grid-cols-[minmax(180px,1fr)_76px_128px_132px_106px] 2xl:items-center ${
               isCustom ? 'bg-yellow-500/5' : ''
             }`}
           >
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-white" title={item.name}>{item.name}</p>
-              <p className="text-xs text-white/35">{item.category}</p>
-              {isCustom && <span className="inline-block mt-1 rounded-full bg-yellow-400/15 px-2 py-0.5 text-[10px] font-semibold text-yellow-400">Valor personalizado</span>}
+              <p className="break-words text-sm font-medium leading-5 text-white" title={item.name}>{item.name}</p>
+              <p className="mt-0.5 truncate text-xs text-white/35">{item.category}</p>
+              {isCustom && <span className="mt-2 inline-block rounded-full bg-yellow-400/15 px-2 py-0.5 text-[10px] font-semibold text-yellow-400">Valor personalizado</span>}
             </div>
             {/* Quantidade */}
-            <input type="number" value={item.qty} min={1}
-              onChange={(e) => onUpdate(item.id, { qty: Math.max(1, Number(e.target.value)) })}
-              className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-center text-sm text-white focus:border-white/35" />
+            <label className="block min-w-0">
+              <span className="mb-1 block text-[10px] uppercase tracking-wider text-white/25 2xl:hidden">{qtyLabel}</span>
+              <input type="number" value={item.qty} min={1}
+                onChange={(e) => onUpdate(item.id, { qty: Math.max(1, Number(e.target.value)) })}
+                className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-center text-sm text-white focus:border-white/35" />
+            </label>
             {/* Valor unitário */}
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-white/35">R$</span>
-              <input type="number" value={item.unit_price} min={0}
-                onChange={(e) => onUpdate(item.id, { applied_price: Math.max(0, Number(e.target.value)) })}
-                className={`w-full rounded-xl border pl-8 pr-3 py-2 text-sm text-white focus:border-white/35 bg-black/30 ${
-                  isCustom ? 'border-yellow-500/30' : 'border-white/10'
-                }`} />
-            </div>
+            <label className="block min-w-0">
+              <span className="mb-1 block text-[10px] uppercase tracking-wider text-white/25 2xl:hidden">Valor unit.</span>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-white/35">R$</span>
+                <input type="number" value={item.unit_price} min={0}
+                  onChange={(e) => onUpdate(item.id, { applied_price: Math.max(0, Number(e.target.value)) })}
+                  className={`w-full rounded-xl border bg-black/30 py-2 pl-8 pr-3 text-sm text-white focus:border-white/35 ${
+                    isCustom ? 'border-yellow-500/30' : 'border-white/10'
+                  }`} />
+              </div>
+            </label>
             {/* Total */}
-            <p className="font-display text-sm font-semibold text-white">
-              {total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-            </p>
+            <div className="min-w-0">
+              <span className="mb-1 block text-[10px] uppercase tracking-wider text-white/25 2xl:hidden">Total</span>
+              <p className="break-words font-display text-base font-semibold leading-5 text-white 2xl:text-sm">
+                {total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </p>
+            </div>
             {/* Restaurar */}
             <button onClick={() => onRestore(item.id)}
               title={`Restaurar valor base: R$ ${item.base_price.toLocaleString('pt-BR')}`}
               disabled={!isCustom}
-              className={`flex items-center gap-1 rounded-xl px-3 py-2 text-xs transition ${
+              className={`inline-flex w-fit items-center gap-1 rounded-xl px-3 py-2 text-xs transition ${
                 isCustom
                   ? 'border border-yellow-500/20 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 cursor-pointer'
                   : 'border border-white/5 text-white/20 cursor-not-allowed'
