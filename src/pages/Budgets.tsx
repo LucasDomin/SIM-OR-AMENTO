@@ -15,6 +15,7 @@ import { BudgetStatusBadge } from '../components/BudgetStatusBadge';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, formatDate } from '../lib/utils';
 import { t } from '../lib/i18n';
+import { clearDraft } from '../lib/draftStorage';
 import type { Budget } from '../types';
 
 export function Budgets() {
@@ -74,7 +75,7 @@ export function Budgets() {
             </p>
           </div>
           <button
-            onClick={() => navigate('/budgets/new')}
+            onClick={() => { clearDraft(); navigate('/budgets/new'); }}
             className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-white px-5 py-2.5 text-sm font-medium text-sim-black transition-colors hover:bg-white/90"
           >
             <Plus size={16} />
