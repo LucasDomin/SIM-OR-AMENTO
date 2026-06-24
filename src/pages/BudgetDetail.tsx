@@ -16,7 +16,7 @@ import { Layout } from '../components/Layout';
 import { t } from '../lib/i18n';
 import { formatCurrency, getSettings, supabase } from '../lib/supabase';
 import { formatDate } from '../lib/utils';
-import { formatPercent } from '../lib/calc';
+import { formatPercent, recalcBudgetSnapshot } from '../lib/calc';
 import { generateProposalPDF } from '../lib/proposalPdf';
 import type { Budget } from '../types';
 
@@ -32,7 +32,13 @@ export function BudgetDetail() {
 
   async function loadBudget() {
     const { data } = await supabase.from('budgets').select().eq('id', id || '').single();
-    setBudget((data as Budget) || null);
+    if (data) {
+      // Recalcula a partir dos valores aplicados para garantir que a tela e o PDF
+      // sejam sempre idênticos (sem cache antigo / valores desatualizados).
+      setBudget(recalcBudgetSnapshot(data as Budget, getSettings()) as Budget);
+    } else {
+      setBudget(null);
+    }
     setLoading(false);
   }
 
@@ -139,6 +145,31 @@ export function BudgetDetail() {
             <Metric label={`Impostos (${t.tax})`} value={formatCurrency(budget.tax_value)} />
           </div>
         </div>
+
+        {/* PROPOSTA - geração de documentos e link */}
+        <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-6">
+          <div className="mb-5 flex items-center justify-between gap-4">
+            <h2 className="font-display text-xl text-white">{t.proposal}</h2>
+            <span className="text-xs text-white/35">Gere documentos e compartilhe o link</span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <ProposalAction onClick={() => generatePDF(true)} icon={FileText} title={t.pdfClient} desc="Versão para o cliente" />
+            <ProposalAction onClick={() => generatePDF(false)} icon={Download} title={t.pdfInternal} desc="Com custos e margem" />
+            <ProposalAction onClick={copyLink} icon={Link2} title={t.copyLink} desc="Proposta online" />
+          </div>
+          <div className="mt-4 flex items-center gap-3 rounded-2xl border border-white/10 bg-black/30 p-3">
+            <Link2 size={14} className="shrink-0 text-white/30" />
+            <span className="min-w-0 flex-1 truncate text-xs text-white/40" title={proposalUrl()}>
+              {proposalUrl()}
+            </span>
+            <button
+              onClick={copyLink}
+              className="shrink-0 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-white/60 transition hover:bg-white/10 hover:text-white"
+            >
+              Copiar
+            </button>
+          </div>
+        </section>
 
         <section className="grid gap-5 lg:grid-cols-[1fr_360px]">
           <div className="min-w-0 space-y-5">
@@ -253,17 +284,6 @@ export function BudgetDetail() {
               </div>
             </Card>
 
-            <Card title={t.proposal}>
-              <div className="space-y-3">
-                <ActionButton onClick={() => generatePDF(true)} icon={FileText} block>{t.pdfClient}</ActionButton>
-                <ActionButton onClick={() => generatePDF(false)} icon={Download} block>{t.pdfInternal}</ActionButton>
-                <ActionButton onClick={copyLink} icon={Link2} block>{t.copyLink}</ActionButton>
-              </div>
-              <p className="mt-5 overflow-hidden break-all rounded-2xl bg-black/30 p-3 text-xs leading-5 text-white/35" title={proposalUrl()}>
-                {proposalUrl().length > 80 ? proposalUrl().slice(0, 77) + '...' : proposalUrl()}
-              </p>
-            </Card>
-
             <Card title="Resumo por seção">
               <div className="space-y-2 text-sm">
                 <InfoRow label="Serviços" value={formatCurrency(servicesSubtotal)} />
@@ -288,6 +308,33 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
       <h2 className="mb-4 font-display text-2xl text-white">{title}</h2>
       {children}
     </section>
+  );
+}
+
+function ProposalAction({
+  onClick,
+  icon: Icon,
+  title,
+  desc,
+}: {
+  onClick: () => void;
+  icon: React.ElementType;
+  title: string;
+  desc: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="group flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 p-4 text-left transition hover:border-white/25 hover:bg-white hover:text-black"
+    >
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/5 text-white/70 transition group-hover:bg-black/10 group-hover:text-black">
+        <Icon size={18} />
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-medium text-white transition group-hover:text-black">{title}</span>
+        <span className="block truncate text-xs text-white/35 transition group-hover:text-black/50">{desc}</span>
+      </span>
+    </button>
   );
 }
 

@@ -87,3 +87,56 @@ export function calcFinancials(
 export function formatPercent(value: number, fractionDigits = 1): string {
   return `${(value * 100).toFixed(fractionDigits)}%`;
 }
+
+/**
+ * Recalcula um orçamento completo a partir dos VALORES APLICADOS dos itens.
+ * Garante que o PDF (ou qualquer exportação) seja um espelho exato do estado atual,
+ * sem confiar em campos de total potencialmente desatualizados (cache).
+ *
+ * - subtotal de cada item = quantidade × valor unitário aplicado
+ * - financeiro (subtotal/fee/base/impostos/total) recalculado do zero
+ * - NUNCA usa a tabela global de preços
+ */
+export function recalcBudgetSnapshot<
+  B extends {
+    services?: Array<{ quantity: number; unit_price: number; cost_price?: number; name?: string; subtotal?: number }>;
+    reels?: Array<{ quantity: number; unit_price: number; cost_price?: number; name?: string; subtotal?: number }>;
+    equipment?: Array<{ days: number; daily_rate: number; cost_price?: number; name?: string; subtotal?: number }>;
+    professionals?: Array<{ days: number; daily_rate: number; cost_price?: number; name?: string; subtotal?: number }>;
+  },
+>(budget: B, settings: { fee_percentage: number; tax_percentage: number }): B & BudgetFinancials {
+  const services = (budget.services || []).map((s) => ({
+    ...s,
+    subtotal: (Number(s.quantity) || 0) * (Number(s.unit_price) || 0),
+  }));
+  const reels = (budget.reels || []).map((r) => ({
+    ...r,
+    subtotal: (Number(r.quantity) || 0) * (Number(r.unit_price) || 0),
+  }));
+  const equipment = (budget.equipment || []).map((e) => ({
+    ...e,
+    subtotal: (Number(e.days) || 0) * (Number(e.daily_rate) || 0),
+  }));
+  const professionals = (budget.professionals || []).map((p) => ({
+    ...p,
+    subtotal: (Number(p.days) || 0) * (Number(p.daily_rate) || 0),
+  }));
+
+  const pricedItems: Array<PricedItem & { name?: string }> = [
+    ...services.map((s) => ({ quantity: s.quantity, unit_price: s.unit_price, cost_price: s.cost_price, name: s.name })),
+    ...reels.map((r) => ({ quantity: r.quantity, unit_price: r.unit_price, cost_price: r.cost_price, name: r.name })),
+    ...equipment.map((e) => ({ quantity: e.days, unit_price: e.daily_rate, cost_price: e.cost_price, name: e.name })),
+    ...professionals.map((p) => ({ quantity: p.days, unit_price: p.daily_rate, cost_price: p.cost_price, name: p.name })),
+  ];
+
+  const financials = calcFinancials(pricedItems, settings);
+
+  return {
+    ...budget,
+    services,
+    reels,
+    equipment,
+    professionals,
+    ...financials,
+  } as B & BudgetFinancials;
+}

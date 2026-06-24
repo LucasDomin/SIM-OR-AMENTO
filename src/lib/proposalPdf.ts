@@ -2,7 +2,7 @@ import type { Budget, SystemSettings } from '../types';
 import { getLogoDataUrl, LOGO_ASPECT } from './logoImage';
 import { formatCurrency } from './supabase';
 import { formatDate } from './utils';
-import { formatPercent } from './calc';
+import { formatPercent, recalcBudgetSnapshot } from './calc';
 
 const SEGMENTS = ['#996EA7', '#E45A58', '#EA8D11', '#FAC421', '#33AE74', '#2894D1', '#B1B7B1', '#F4C78D', '#8B5A2B'];
 
@@ -23,7 +23,11 @@ interface SectionItem {
   value: number; // valor cobrado do cliente
 }
 
-export async function generateProposalPDF(budget: Budget, settings: SystemSettings, clientOnly: boolean) {
+export async function generateProposalPDF(rawBudget: Budget, settings: SystemSettings, clientOnly: boolean) {
+  // PASSO OBRIGATÓRIO: recalcular TODOS os totais a partir dos valores aplicados do
+  // orçamento atual. O PDF nunca usa a tabela global; é um espelho exato do relatório.
+  const budget = recalcBudgetSnapshot(rawBudget, settings) as Budget;
+
   const { default: jsPDF } = await import('jspdf');
   const doc = new jsPDF();
   const W = doc.internal.pageSize.getWidth();
@@ -203,7 +207,7 @@ export async function generateProposalPDF(budget: Budget, settings: SystemSettin
     doc.setFontSize(7.5);
     setColor(doc, { r: 175, g: 175, b: 175 });
     const bdX = W - M - 12;
-    doc.text(`Subtotal  ${formatCurrency(sumCost(budget))}`, bdX, y + 10, { align: 'right' });
+    doc.text(`Subtotal  ${formatCurrency(sumValue(budget))}`, bdX, y + 10, { align: 'right' });
     doc.text(`Fee (${settings.fee_percentage}%)  ${formatCurrency(budget.fee_value)}`, bdX, y + 16, { align: 'right' });
     doc.text(`Impostos (${settings.tax_percentage}%)  ${formatCurrency(budget.tax_value)}`, bdX, y + 22, { align: 'right' });
   }
@@ -225,10 +229,9 @@ export async function generateProposalPDF(budget: Budget, settings: SystemSettin
     ensure(60);
     y = sectionTitle(doc, 'RESUMO FINANCEIRO INTERNO', M, y, W);
 
-    const totalCusto = budget.cost_total
-      ? // cost_total no modelo guarda o subtotal de venda; recomputamos custo real abaixo
-        sumCost(budget)
-      : sumCost(budget);
+    // Custo real = soma de (custo unitário × quantidade) de cada item do orçamento atual.
+    // Valor = soma dos subtotais aplicados (espelho do relatório).
+    const totalCusto = sumCost(budget);
     const totalValor = sumValue(budget);
     const lucro = totalValor - totalCusto;
     const margemReal = totalValor > 0 ? lucro / totalValor : 0;
