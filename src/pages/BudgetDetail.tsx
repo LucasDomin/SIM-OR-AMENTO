@@ -17,7 +17,8 @@ import { t } from '../lib/i18n';
 import { formatCurrency, getSettings, supabase } from '../lib/supabase';
 import { formatDate } from '../lib/utils';
 import { formatPercent, recalcBudgetSnapshot } from '../lib/calc';
-import { generateProposalPDF } from '../lib/proposalPdf';
+import { generateClientPDF } from '../lib/generateClientPDF';
+import { generateInternalPDF } from '../lib/generateInternalPDF';
 import type { Budget } from '../types';
 
 export function BudgetDetail() {
@@ -67,9 +68,14 @@ export function BudgetDetail() {
     }
   }
 
-  async function generatePDF(clientOnly: boolean) {
+  async function handleGenerateClientPDF() {
     if (!budget) return;
-    await generateProposalPDF(budget, getSettings(), clientOnly);
+    await generateClientPDF(budget, getSettings());
+  }
+
+  async function handleGenerateInternalPDF() {
+    if (!budget) return;
+    await generateInternalPDF(budget, getSettings());
   }
 
   if (loading) {
@@ -129,8 +135,8 @@ export function BudgetDetail() {
                 <ActionButton onClick={() => updateStatus('Rejected')} icon={XCircle}>{t.reject}</ActionButton>
               </>
             )}
-            <ActionButton onClick={() => generatePDF(true)} icon={FileText}>{t.pdfClient}</ActionButton>
-            <ActionButton onClick={() => generatePDF(false)} icon={Download}>{t.pdfInternal}</ActionButton>
+            <ActionButton onClick={handleGenerateClientPDF} icon={FileText}>{t.pdfClient}</ActionButton>
+            <ActionButton onClick={handleGenerateInternalPDF} icon={Download}>{t.pdfInternal}</ActionButton>
             <ActionButton onClick={duplicateBudget} icon={Copy}>{t.duplicate}</ActionButton>
           </div>
         </motion.header>
@@ -142,7 +148,7 @@ export function BudgetDetail() {
             {formatCurrency(budget.final_price)}
           </p>
           <div className="mt-6 grid gap-4 sm:grid-cols-3">
-            <Metric label="Subtotal" value={formatCurrency(budget.cost_total)} />
+            <Metric label="Subtotal" value={formatCurrency(budget.subtotal || (budget.final_price - budget.fee_value - budget.tax_value))} />
             <Metric label={`Fee (${t.fee})`} value={formatCurrency(budget.fee_value)} />
             <Metric label={`Impostos (${t.tax})`} value={formatCurrency(budget.tax_value)} />
           </div>
@@ -155,8 +161,8 @@ export function BudgetDetail() {
             <span className="text-xs text-white/35">Gere documentos e compartilhe o link</span>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
-            <ProposalAction onClick={() => generatePDF(true)} icon={FileText} title={t.pdfClient} desc="Versão para o cliente" />
-            <ProposalAction onClick={() => generatePDF(false)} icon={Download} title={t.pdfInternal} desc="Com custos e margem" />
+            <ProposalAction onClick={handleGenerateClientPDF} icon={FileText} title={t.pdfClient} desc="Versão para o cliente" />
+            <ProposalAction onClick={handleGenerateInternalPDF} icon={Download} title={t.pdfInternal} desc="Com custos e margem" />
             <ProposalAction onClick={copyLink} icon={Link2} title={t.copyLink} desc="Proposta online" />
           </div>
           <div className="mt-4 flex items-center gap-3 rounded-2xl border border-white/10 bg-black/30 p-3">
@@ -189,7 +195,7 @@ export function BudgetDetail() {
                       details={[
                         `${prof.days} ${t.days.toLowerCase()}`,
                         `Diária ${formatCurrency(prof.daily_rate)}`,
-                        `Custo ${formatCurrency(prof.cost_price * prof.days)}`,
+                        `Custo ${formatCurrency((prof.cost_base ?? prof.cost_price ?? 0) * prof.days)}`,
                       ]}
                       value={formatCurrency(prof.subtotal)}
                     />

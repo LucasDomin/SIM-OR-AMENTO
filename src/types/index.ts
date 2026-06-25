@@ -46,23 +46,19 @@ export interface SystemSettings {
   updated_at: string;
 }
 
-// Item da tabela de preços.
-// Cálculo por item:
-//   fee = cost_price × (fee_percent / 100)
-//   base = cost_price + fee
-//   impostos = base × (tax_percent / 100)
-//   sale_price = base + impostos
-//
-// sale_price é o VALOR DE VENDA FINAL (com fee e impostos embutidos).
-// É ele que vai para o orçamento e para o PDF do cliente.
+// Item genérico usado no PriceList e nos itens do orçamento.
+// O cálculo principal é unit_price * quantity.
+// cost_price é mantido apenas para controle interno.
 export interface PriceListItem {
   id: string;
   category: ServiceCategory;
   name: string;
-  cost_price: number;   // custo base (interno)
-  fee_percent: number;  // taxa aplicada por item (%)
-  tax_percent: number;  // imposto aplicado por item (%)
-  sale_price: number;   // valor de venda final (calculado: base + impostos)
+  cost_base: number;       // custo base unitário
+  fee_percent: number;     // fee do item
+  tax_percent: number;     // imposto do item
+  sale_price: number;      // valor de venda final do item
+  // legado / compatibilidade interna
+  cost_price?: number;
   active: boolean;
   updated_at: string;
 }
@@ -75,10 +71,14 @@ export interface BudgetItem {
   category: ServiceCategory;
   name: string;
   quantity: number;
-  unit_price: number;
-  cost_price: number;
+  unit_price: number;      // valor aplicado no orçamento (pode ser customizado)
+  cost_base: number;
+  fee_percent: number;
+  tax_percent: number;
   subtotal: number;
   custom_pricing: boolean;
+  // legado / compatibilidade interna
+  cost_price?: number;
 }
 
 // Reels como categoria independente (cada reel é um item com valor próprio)
@@ -87,8 +87,11 @@ export interface ReelItem {
   name: string;
   quantity: number;
   unit_price: number;
-  cost_price: number;
+  cost_base: number;
+  fee_percent: number;
+  tax_percent: number;
   subtotal: number;
+  cost_price?: number;
 }
 
 // Equipamento (com diárias e datas de locação)
@@ -99,8 +102,11 @@ export interface EquipmentItem {
   days: number;
   pickup_date?: string;
   return_date?: string;
-  cost_price: number;
+  cost_base: number;
+  fee_percent: number;
+  tax_percent: number;
   subtotal: number;
+  cost_price?: number;
 }
 
 // Profissional (com diárias)
@@ -109,8 +115,11 @@ export interface ProfessionalItem {
   name: string;
   daily_rate: number;
   days: number;
-  cost_price: number;
+  cost_base: number;
+  fee_percent: number;
+  tax_percent: number;
   subtotal: number;
+  cost_price?: number;
 }
 
 export interface ProductionSetup {
@@ -143,6 +152,8 @@ export interface Budget {
   expires_at: string;
   proposal_date: string;
   online_slug: string;
+  subtotal?: number;
+  base?: number;
   cost_total: number;
   fee_value: number;
   tax_value: number;

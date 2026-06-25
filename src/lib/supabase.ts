@@ -10,7 +10,7 @@ import type {
   Template,
   User,
 } from '../types';
-import { calcItemSalePrice, calcSubtotal } from './calc';
+import { calcItemPricing, calcSubtotal, getCostBase } from './calc';
 
 type TableName = 'users' | 'clients' | 'budgets' | 'budget_items' | 'price_list' | 'templates' | 'system_settings';
 type TableRecord = Budget | Client | BudgetItem | ReelItem | EquipmentItem | ProfessionalItem | PriceListItem | Template | SystemSettings | User;
@@ -60,59 +60,86 @@ const defaultSettings: SystemSettings = {
   updated_at: new Date().toISOString(),
 };
 
-// Define-se apenas o custo base — fee, imposto e sale_price são calculados.
-const priceSeedRaw: Array<{ category: string; name: string; cost_price: number }> = [
-  { category: 'Pré Produção', name: 'Roteiro', cost_price: 1600 },
-  { category: 'Pré Produção', name: 'Storyboard', cost_price: 1200 },
-  { category: 'Pré Produção', name: 'Produtor', cost_price: 1500 },
-  { category: 'Pré Produção', name: 'Produtor Executivo', cost_price: 2800 },
-  { category: 'Produção', name: 'Diretor', cost_price: 2000 },
-  { category: 'Produção', name: 'Filmmaker', cost_price: 900 },
-  { category: 'Produção', name: 'Diretor de Fotografia', cost_price: 2200 },
-  { category: 'Produção', name: 'Assistente de Câmera', cost_price: 750 },
-  { category: 'Produção', name: 'Assistente de Direção', cost_price: 900 },
-  { category: 'Produção', name: 'Logger', cost_price: 600 },
-  { category: 'Produção', name: 'Gaffer', cost_price: 1400 },
-  { category: 'Produção', name: 'Operador de Áudio', cost_price: 1100 },
-  { category: 'Produção', name: 'Drone / FPV', cost_price: 1800 },
-  { category: 'Fotografia', name: 'Fotógrafo', cost_price: 1500 },
-  { category: 'Fotografia', name: 'Assistente de Fotografia', cost_price: 650 },
-  { category: 'Pós Produção', name: 'Edição de Vídeo', cost_price: 2000 },
-  { category: 'Pós Produção', name: 'Edição Sameday', cost_price: 2600 },
-  { category: 'Pós Produção', name: 'Motion', cost_price: 1800 },
-  { category: 'Pós Produção', name: 'VFX', cost_price: 3000 },
-  { category: 'Reels', name: 'Edição de Reel', cost_price: 90 },
-  { category: 'Reels', name: 'Motion Design Reel', cost_price: 160 },
-  { category: 'Reels', name: 'Color Grading Reel', cost_price: 110 },
-  { category: 'Finalização', name: 'Color Grading', cost_price: 1500 },
-  { category: 'Finalização', name: 'Sound Design', cost_price: 1200 },
-  { category: 'Finalização', name: 'Trilha', cost_price: 1700 },
-  { category: 'Finalização', name: 'Locução', cost_price: 800 },
-  { category: 'Logística', name: 'Alimentação', cost_price: 500 },
-  { category: 'Logística', name: 'Catering', cost_price: 1300 },
-  { category: 'Logística', name: 'Transporte Van', cost_price: 700 },
-  { category: 'Logística', name: 'Transporte Uber', cost_price: 300 },
-  { category: 'Logística', name: 'Hospedagem', cost_price: 650 },
-  { category: 'Equipamentos', name: 'Câmera', cost_price: 700 },
-  { category: 'Equipamentos', name: 'Lentes', cost_price: 350 },
-  { category: 'Equipamentos', name: 'Iluminação', cost_price: 500 },
-  { category: 'Equipamentos', name: 'Drone', cost_price: 800 },
-  { category: 'Equipamentos', name: 'Estabilizador / Gimbal', cost_price: 280 },
-  { category: 'Equipamentos', name: 'Áudio / Microfones', cost_price: 250 },
-  { category: 'Equipamentos', name: 'Tripé / Suportes', cost_price: 100 },
-  { category: 'Equipamentos', name: 'Cartões / Storage', cost_price: 150 },
-  { category: 'Equipe', name: 'Diretor', cost_price: 1500 },
-  { category: 'Equipe', name: 'Diretor de Fotografia', cost_price: 1200 },
-  { category: 'Equipe', name: 'Filmmaker', cost_price: 900 },
-  { category: 'Equipe', name: 'Operador de Câmera', cost_price: 600 },
-  { category: 'Equipe', name: 'Assistente de Câmera', cost_price: 350 },
-  { category: 'Equipe', name: 'Fotógrafo', cost_price: 900 },
-  { category: 'Equipe', name: 'Produtor', cost_price: 700 },
-  { category: 'Equipe', name: 'Operador de Áudio', cost_price: 500 },
-  { category: 'Equipe', name: 'Gaffer / Elétrica', cost_price: 550 },
-  { category: 'Equipe', name: 'Piloto de Drone', cost_price: 700 },
-  { category: 'Extras', name: 'Verba Extra', cost_price: 2500 },
-  { category: 'Extras', name: 'Material Bruto', cost_price: 0 },
+function makePrice(
+  category: PriceListItem['category'],
+  name: string,
+  cost_base: number,
+  fee_percent = defaultSettings.fee_percentage,
+  tax_percent = defaultSettings.tax_percentage,
+): Omit<PriceListItem, 'id' | 'active' | 'updated_at'> {
+  const pricing = calcItemPricing(cost_base, fee_percent, tax_percent);
+  return {
+    category,
+    name,
+    cost_base,
+    fee_percent,
+    tax_percent,
+    sale_price: pricing.sale_price,
+    cost_price: cost_base,
+  };
+}
+
+const priceSeed: Omit<PriceListItem, 'id' | 'active' | 'updated_at'>[] = [
+  makePrice('Pré Produção', 'Roteiro', 1600),
+  makePrice('Pré Produção', 'Storyboard', 1200),
+  makePrice('Pré Produção', 'Produtor', 1500),
+  makePrice('Pré Produção', 'Produtor Executivo', 2800),
+
+  makePrice('Produção', 'Diretor', 2000),
+  makePrice('Produção', 'Filmmaker', 900),
+  makePrice('Produção', 'Diretor de Fotografia', 2200),
+  makePrice('Produção', 'Assistente de Câmera', 750),
+  makePrice('Produção', 'Assistente de Direção', 900),
+  makePrice('Produção', 'Logger', 600),
+  makePrice('Produção', 'Gaffer', 1400),
+  makePrice('Produção', 'Operador de Áudio', 1100),
+  makePrice('Produção', 'Drone / FPV', 1800),
+
+  makePrice('Fotografia', 'Fotógrafo', 1500),
+  makePrice('Fotografia', 'Assistente de Fotografia', 650),
+
+  makePrice('Pós Produção', 'Edição de Vídeo', 2000),
+  makePrice('Pós Produção', 'Edição Sameday', 2600),
+  makePrice('Pós Produção', 'Motion', 1800),
+  makePrice('Pós Produção', 'VFX', 3000),
+
+  makePrice('Reels', 'Edição de Reel', 90),
+  makePrice('Reels', 'Motion Design Reel', 160),
+  makePrice('Reels', 'Color Grading Reel', 110),
+
+  makePrice('Finalização', 'Color Grading', 1500),
+  makePrice('Finalização', 'Sound Design', 1200),
+  makePrice('Finalização', 'Trilha', 1700),
+  makePrice('Finalização', 'Locução', 800),
+
+  makePrice('Logística', 'Alimentação', 500),
+  makePrice('Logística', 'Catering', 1300),
+  makePrice('Logística', 'Transporte Van', 700),
+  makePrice('Logística', 'Transporte Uber', 300),
+  makePrice('Logística', 'Hospedagem', 650),
+
+  makePrice('Equipamentos', 'Câmera', 700),
+  makePrice('Equipamentos', 'Lentes', 350),
+  makePrice('Equipamentos', 'Iluminação', 500),
+  makePrice('Equipamentos', 'Drone', 800),
+  makePrice('Equipamentos', 'Estabilizador / Gimbal', 280),
+  makePrice('Equipamentos', 'Áudio / Microfones', 250),
+  makePrice('Equipamentos', 'Tripé / Suportes', 100),
+  makePrice('Equipamentos', 'Cartões / Storage', 150),
+
+  makePrice('Equipe', 'Diretor', 1500),
+  makePrice('Equipe', 'Diretor de Fotografia', 1200),
+  makePrice('Equipe', 'Filmmaker', 900),
+  makePrice('Equipe', 'Operador de Câmera', 600),
+  makePrice('Equipe', 'Assistente de Câmera', 350),
+  makePrice('Equipe', 'Fotógrafo', 900),
+  makePrice('Equipe', 'Produtor', 700),
+  makePrice('Equipe', 'Operador de Áudio', 500),
+  makePrice('Equipe', 'Gaffer / Elétrica', 550),
+  makePrice('Equipe', 'Piloto de Drone', 700),
+
+  makePrice('Extras', 'Verba Extra', 2500, 0, 0),
+  makePrice('Extras', 'Material Bruto', 0, 0, 0),
 ];
 
 const templateSeed: Template[] = [
@@ -122,7 +149,7 @@ const templateSeed: Template[] = [
     description: 'Narrativa de marca com entrevistas, cenas de atmosfera e acabamento premium.',
     project_type: 'Institucional',
     production: { shooting_days: 2, city: 'Belo Horizonte', need_transportation: true, need_lodging: false, delivery_days: 20 },
-    service_names: ['Roteiro', 'Diretor', 'Filmmaker', 'Diretor de Fotografia', 'Câmera', 'Lentes', 'Iluminação', 'Edição de Vídeo', 'Color Grading', 'Sound Design'],
+    service_names: ['Roteiro', 'Diretor', 'Filmmaker', 'Diretor de Fotografia', 'Edição de Vídeo', 'Color Grading', 'Sound Design'],
     reel_names: ['Edição de Reel'],
     equipment_names: ['Câmera', 'Lentes', 'Iluminação'],
     professional_names: ['Diretor', 'Filmmaker', 'Diretor de Fotografia'],
@@ -146,7 +173,7 @@ const templateSeed: Template[] = [
     description: 'Campanha com direção criativa, produção robusta e pós-produção completa.',
     project_type: 'Publicidade',
     production: { shooting_days: 2, city: 'Belo Horizonte', need_transportation: true, need_lodging: false, delivery_days: 25 },
-    service_names: ['Roteiro', 'Storyboard', 'Produtor Executivo', 'Produtor', 'Diretor', 'Diretor de Fotografia', 'Assistente de Câmera', 'Gaffer', 'Câmera', 'Lentes', 'Iluminação', 'Edição de Vídeo', 'Motion', 'Color Grading', 'Sound Design'],
+    service_names: ['Roteiro', 'Storyboard', 'Produtor Executivo', 'Produtor', 'Diretor', 'Diretor de Fotografia', 'Assistente de Câmera', 'Gaffer', 'Edição de Vídeo', 'Motion', 'Color Grading', 'Sound Design'],
     reel_names: ['Edição de Reel', 'Motion Design Reel'],
     equipment_names: ['Câmera', 'Lentes', 'Iluminação'],
     professional_names: ['Diretor', 'Diretor de Fotografia', 'Filmmaker'],
@@ -171,7 +198,7 @@ const templateSeed: Template[] = [
     project_type: 'Reels',
     production: { shooting_days: 1, city: 'Belo Horizonte', need_transportation: false, need_lodging: false, delivery_days: 3 },
     service_names: ['Edição de Vídeo', 'Motion', 'Transporte Uber'],
-    reel_names: ['Edição de Reel', 'Edição de Reel', 'Edição de Reel', 'Edição de Reel', 'Edição de Reel', 'Edição de Reel'],
+    reel_names: ['Edição de Reel', 'Edição de Reel', 'Edição de Reel', 'Edição de Reel'],
     equipment_names: ['Câmera'],
     professional_names: ['Filmmaker', 'Fotógrafo'],
     created_at: new Date().toISOString(),
@@ -217,6 +244,21 @@ function writeTable(table: string, data: TableRecord[]) {
   if (key) setStorage(key, data);
 }
 
+function normalizePrice(item: PriceListItem): PriceListItem {
+  const cost_base = item.cost_base ?? getCostBase(item);
+  const fee_percent = item.fee_percent ?? defaultSettings.fee_percentage;
+  const tax_percent = item.tax_percent ?? defaultSettings.tax_percentage;
+  const pricing = calcItemPricing(cost_base, fee_percent, tax_percent);
+  return {
+    ...item,
+    cost_base,
+    cost_price: cost_base,
+    fee_percent,
+    tax_percent,
+    sale_price: item.sale_price ?? pricing.sale_price,
+  };
+}
+
 function normalizeBudget(raw: Budget): Budget {
   const now = new Date().toISOString();
   const expires = raw.expires_at || raw.expiration_date || now;
@@ -225,24 +267,37 @@ function normalizeBudget(raw: Budget): Budget {
     ...raw,
     services: (raw.services || []).map((item) => ({
       ...item,
+      cost_base: item.cost_base ?? getCostBase(item),
+      cost_price: item.cost_base ?? getCostBase(item),
+      fee_percent: item.fee_percent ?? defaultSettings.fee_percentage,
+      tax_percent: item.tax_percent ?? defaultSettings.tax_percentage,
       subtotal: item.subtotal ?? calcSubtotal(item),
     })),
     reels: (raw.reels || []).map((item) => ({
       ...item,
+      cost_base: item.cost_base ?? getCostBase(item),
+      cost_price: item.cost_base ?? getCostBase(item),
+      fee_percent: item.fee_percent ?? defaultSettings.fee_percentage,
+      tax_percent: item.tax_percent ?? defaultSettings.tax_percentage,
       subtotal: item.subtotal ?? calcSubtotal(item),
     })),
     equipment: (raw.equipment || []).map((item) => ({
       ...item,
+      cost_base: item.cost_base ?? getCostBase(item),
+      cost_price: item.cost_base ?? getCostBase(item),
+      fee_percent: item.fee_percent ?? defaultSettings.fee_percentage,
+      tax_percent: item.tax_percent ?? defaultSettings.tax_percentage,
       subtotal: item.subtotal ?? (item.daily_rate || 0) * (item.days || 0),
     })),
     professionals: (raw.professionals || []).map((item) => ({
       ...item,
+      cost_base: item.cost_base ?? getCostBase(item),
+      cost_price: item.cost_base ?? getCostBase(item),
+      fee_percent: item.fee_percent ?? defaultSettings.fee_percentage,
+      tax_percent: item.tax_percent ?? defaultSettings.tax_percentage,
       subtotal: item.subtotal ?? (item.daily_rate || 0) * (item.days || 0),
     })),
-    production: {
-      ...raw.production,
-      delivery_days: raw.production?.delivery_days ?? 15,
-    },
+    production: { ...raw.production, delivery_days: raw.production?.delivery_days ?? 15 },
     updated_at: raw.updated_at || raw.created_at,
     expires_at: expires,
     expiration_date: expires,
@@ -261,19 +316,9 @@ function seed() {
   }
   if (getStorage<PriceListItem[]>(STORAGE_KEYS.price_list, []).length === 0) {
     const now = new Date().toISOString();
-    const fee = defaultSettings.fee_percentage;
-    const tax = defaultSettings.tax_percentage;
     setStorage(
       STORAGE_KEYS.price_list,
-      priceSeedRaw.map((item) => ({
-        ...item,
-        id: generateId(),
-        fee_percent: fee,
-        tax_percent: tax,
-        sale_price: calcItemSalePrice(item.cost_price, fee, tax),
-        active: true,
-        updated_at: now,
-      })),
+      priceSeed.map((item) => ({ ...item, id: generateId(), active: true, updated_at: now })),
     );
   }
   if (getStorage<Template[]>(STORAGE_KEYS.templates, []).length === 0) {
@@ -281,6 +326,117 @@ function seed() {
   }
   if (getStorage<User[]>(STORAGE_KEYS.users, []).length === 0) {
     setStorage(STORAGE_KEYS.users, [{ id: 'user-1', email: 'jay@admin.com.br' }]);
+  }
+  if (getStorage<Budget[]>(STORAGE_KEYS.budgets, []).length === 0) {
+    const prices = getStorage<PriceListItem[]>(STORAGE_KEYS.price_list, []).map(normalizePrice);
+    const find = (name: string) => prices.find((p) => p.name === name);
+    const now = new Date();
+    const expires = new Date(now);
+    expires.setDate(expires.getDate() + defaultSettings.proposal_validity_days);
+
+    const servicesRaw = ['Roteiro', 'Diretor', 'Filmmaker', 'Diretor de Fotografia', 'Edição de Vídeo', 'Color Grading', 'Sound Design'];
+    const services: BudgetItem[] = servicesRaw
+      .map((name) => find(name))
+      .filter(Boolean)
+      .map((p) => ({
+        id: generateId(),
+        budget_id: 'demo-premium-2025',
+        price_list_id: p!.id,
+        category: p!.category,
+        name: p!.name,
+        quantity: 1,
+        unit_price: p!.sale_price,
+        cost_base: p!.cost_base,
+        cost_price: p!.cost_base,
+        fee_percent: p!.fee_percent,
+        tax_percent: p!.tax_percent,
+        subtotal: p!.sale_price,
+        custom_pricing: false,
+      }));
+
+    const reelPrice = find('Edição de Reel');
+    const reels: ReelItem[] = reelPrice ? [{
+      id: generateId(),
+      name: reelPrice.name,
+      quantity: 3,
+      unit_price: reelPrice.sale_price,
+      cost_base: reelPrice.cost_base,
+      cost_price: reelPrice.cost_base,
+      fee_percent: reelPrice.fee_percent,
+      tax_percent: reelPrice.tax_percent,
+      subtotal: 3 * reelPrice.sale_price,
+    }] : [];
+
+    const eqNames = ['Câmera', 'Lentes', 'Iluminação'];
+    const equipment: EquipmentItem[] = eqNames.map((name) => find(name)).filter(Boolean).map((p) => ({
+      id: generateId(),
+      name: p!.name,
+      daily_rate: p!.sale_price,
+      days: 2,
+      pickup_date: undefined,
+      return_date: undefined,
+      cost_base: p!.cost_base,
+      cost_price: p!.cost_base,
+      fee_percent: p!.fee_percent,
+      tax_percent: p!.tax_percent,
+      subtotal: 2 * p!.sale_price,
+    }));
+
+    const profNames = ['Diretor', 'Filmmaker', 'Diretor de Fotografia'];
+    const professionals: ProfessionalItem[] = profNames.map((name) => find(name)).filter(Boolean).map((p) => ({
+      id: generateId(),
+      name: p!.name,
+      daily_rate: p!.sale_price,
+      days: 2,
+      cost_base: p!.cost_base,
+      cost_price: p!.cost_base,
+      fee_percent: p!.fee_percent,
+      tax_percent: p!.tax_percent,
+      subtotal: 2 * p!.sale_price,
+    }));
+
+    const demo: Budget = {
+      id: 'demo-premium-2025',
+      client_id: 'client-demo-premium',
+      client_name: 'Marina Rocha',
+      client_company: 'Rocha Studio',
+      client_whatsapp: '(11) 98888-2025',
+      client_email: 'marina@rochastudio.com',
+      project_name: 'Manifesto Rocha Studio',
+      project_type: 'Institucional',
+      project_description: 'Filme manifesto com linguagem cinematográfica, entrevistas e imagens de processo para lançamento de nova identidade.',
+      production: {
+        shooting_days: 2,
+        city: 'Belo Horizonte',
+        need_transportation: true,
+        need_lodging: false,
+        delivery_days: 20,
+        start_date: undefined,
+      },
+      services,
+      reels,
+      equipment,
+      professionals,
+      status: 'Sent',
+      created_at: now.toISOString(),
+      updated_at: now.toISOString(),
+      expires_at: expires.toISOString(),
+      expiration_date: expires.toISOString(),
+      proposal_date: now.toISOString(),
+      online_slug: 'manifesto-rocha-studio-demo',
+      cost_total: 0,
+      fee_value: 0,
+      tax_value: 0,
+      final_price: 0,
+      profit: 0,
+      margin: 0,
+      material_bruto_value: 0,
+      type: 'Institucional',
+      budget_date: now.toISOString(),
+      client_phone: '(11) 98888-2025',
+    };
+
+    setStorage(STORAGE_KEYS.budgets, [demo]);
   }
 }
 
@@ -313,6 +469,7 @@ export const supabase = {
         single: async () => {
           let rows = readTable(table);
           if (table === 'budgets') rows = (rows as Budget[]).map(normalizeBudget);
+          if (table === 'price_list') rows = (rows as PriceListItem[]).map(normalizePrice);
           const data = rows.find((row) => String(field(row, column)) === value) || null;
           return { data, error: null };
         },
@@ -320,6 +477,7 @@ export const supabase = {
           data: async () => {
             let rows = readTable(table).filter((row) => String(field(row, column)) === value);
             if (table === 'budgets') rows = (rows as Budget[]).map(normalizeBudget);
+            if (table === 'price_list') rows = (rows as PriceListItem[]).map(normalizePrice);
             return { data: rows, error: null };
           },
         }),
@@ -328,19 +486,21 @@ export const supabase = {
         data: async () => {
           let rows = readTable(table);
           if (table === 'budgets') rows = (rows as Budget[]).map(normalizeBudget);
+          if (table === 'price_list') rows = (rows as PriceListItem[]).map(normalizePrice);
           rows = rows.sort((a, b) => {
             const av = String(field(a, column) || '');
             const bv = String(field(b, column) || '');
             return opts?.ascending ? av.localeCompare(bv) : bv.localeCompare(av);
           });
-          if (table === 'budgets') writeTable(table, rows);
+          if (table === 'budgets' || table === 'price_list') writeTable(table, rows);
           return { data: rows, error: null };
         },
       }),
       data: async () => {
         let rows = readTable(table);
         if (table === 'budgets') rows = (rows as Budget[]).map(normalizeBudget);
-        if (table === 'budgets') writeTable(table, rows);
+        if (table === 'price_list') rows = (rows as PriceListItem[]).map(normalizePrice);
+        if (table === 'budgets' || table === 'price_list') writeTable(table, rows);
         return { data: rows, error: null };
       },
     }),

@@ -4,7 +4,7 @@ import { Plus, Save, Search, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { t } from '../lib/i18n';
 import { formatCurrency, generateId, getSettings, supabase } from '../lib/supabase';
-import { calcItemSalePrice } from '../lib/calc';
+import { calcItemPricing } from '../lib/calc';
 import type { PriceListItem, ServiceCategory, SystemSettings } from '../types';
 
 const CATEGORIES: ServiceCategory[] = [
@@ -38,37 +38,35 @@ export function PriceList() {
     load();
   }, []);
 
-  // Recalcula sale_price toda vez que custo, fee% ou imposto% mudam.
   async function updatePrice(id: string, updates: Partial<PriceListItem>) {
     setItems((current) =>
       current.map((item) => {
         if (item.id !== id) return item;
-        const next: PriceListItem = { ...item, ...updates, updated_at: new Date().toISOString() };
-        next.sale_price = calcItemSalePrice(next.cost_price, next.fee_percent, next.tax_percent);
+        const next = { ...item, ...updates, updated_at: new Date().toISOString() };
+        const pricing = calcItemPricing(next.cost_base, next.fee_percent, next.tax_percent);
+        next.sale_price = pricing.sale_price;
+        next.cost_price = next.cost_base;
         return next;
       }),
     );
-    // Persiste o recálculo junto
-    const updated = items.find((i) => i.id === id);
-    if (updated) {
-      const merged = { ...updated, ...updates };
-      const sale = calcItemSalePrice(merged.cost_price, merged.fee_percent, merged.tax_percent);
-      await supabase.from('price_list').update({ ...updates, sale_price: sale }).eq('id', id);
-    }
+    const found = items.find((item) => item.id === id);
+    const merged = { ...found, ...updates } as PriceListItem;
+    const pricing = calcItemPricing(merged.cost_base, merged.fee_percent, merged.tax_percent);
+    await supabase.from('price_list').update({ ...updates, sale_price: pricing.sale_price, cost_price: merged.cost_base }).eq('id', id);
   }
 
   async function addItem() {
     const category = activeCategory === 'all' ? CATEGORIES[0] : activeCategory;
-    const fee = settings.fee_percentage;
-    const tax = settings.tax_percentage;
+    const pricing = calcItemPricing(0, settings.fee_percentage, settings.tax_percentage);
     const newItem: PriceListItem = {
       id: generateId(),
       category,
       name: 'Novo item',
+      cost_base: 0,
+      fee_percent: settings.fee_percentage,
+      tax_percent: settings.tax_percentage,
+      sale_price: pricing.sale_price,
       cost_price: 0,
-      fee_percent: fee,
-      tax_percent: tax,
-      sale_price: calcItemSalePrice(0, fee, tax),
       active: true,
       updated_at: new Date().toISOString(),
     };
@@ -232,9 +230,9 @@ function PriceRow({
   onUpdate: (id: string, u: Partial<PriceListItem>) => void;
   onRemove: (id: string) => void;
 }) {
-  // sale_price é sempre calculado a partir dos outros campos
+  const spread = item.sale_price - item.cost_base;
   return (
-    <div className="grid gap-3 overflow-hidden rounded-2xl border border-white/10 bg-black/25 p-4 2xl:grid-cols-[minmax(180px,1.4fr)_110px_90px_90px_140px_50px] 2xl:items-end">
+    <div className="grid gap-3 overflow-hidden rounded-2xl border border-white/10 bg-black/25 p-4 xl:grid-cols-[minmax(0,1.2fr)_120px_90px_90px_120px_120px_60px] xl:items-center">
       <div className="min-w-0">
         <input
           type="text"
@@ -242,43 +240,31 @@ function PriceRow({
           onChange={(e) => onUpdate(item.id, { name: e.target.value })}
           className="w-full bg-transparent text-sm font-medium text-white focus:outline-none"
         />
-        <p className="mt-1 truncate text-xs text-white/35">{item.category}</p>
+        <p className="mt-1 text-xs text-white/35">{item.category}</p>
       </div>
-      <MoneyInput label="Custo base" value={item.cost_price} onChange={(v) => onUpdate(item.id, { cost_price: v })} />
+      <MoneyInput label="Custo Base" value={item.cost_base} onChange={(v) => onUpdate(item.id, { cost_base: v })} />
       <PercentInput label="Fee %" value={item.fee_percent} onChange={(v) => onUpdate(item.id, { fee_percent: v })} />
       <PercentInput label="Imposto %" value={item.tax_percent} onChange={(v) => onUpdate(item.id, { tax_percent: v })} />
-      <div className="min-w-0 rounded-xl border border-accent/20 bg-accent/[0.06] px-3 py-2">
-        <p className="text-[10px] uppercase tracking-wider text-accent/80">Valor venda</p>
-        <p className="mt-0.5 truncate font-display text-base font-semibold text-white" title={formatCurrency(item.sale_price)}>
+      <div className="text-right text-xs text-white/35">
+        <p>Venda Final</p>
+        <p className="truncate text-sm text-white/85" title={formatCurrency(item.sale_price)}>
           {formatCurrency(item.sale_price)}
+        </p>
+      </div>
+      <div className="text-right text-xs text-white/35">
+        <p>Spread</p>
+        <p className="truncate text-sm text-white/70" title={formatCurrency(spread)}>
+          {formatCurrency(spread)}
         </p>
       </div>
       <button
         onClick={() => onRemove(item.id)}
-        className="self-center rounded-xl p-2 text-white/30 transition hover:bg-red-500/10 hover:text-red-400"
+        className="self-center rounded-xl p-2 text-white/30 hover:bg-red-500/10 hover:text-red-400"
         title={t.removeItem}
       >
         <Trash2 size={14} />
       </button>
     </div>
-  );
-}
-
-function PercentInput({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-[10px] uppercase tracking-wider text-white/25">{label}</span>
-      <div className="relative">
-        <input
-          type="number"
-          value={value ?? 0}
-          min={0}
-          onChange={(e) => onChange(Number(e.target.value))}
-          className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 pr-7 text-sm text-white focus:border-white/35"
-        />
-        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-white/40">%</span>
-      </div>
-    </label>
   );
 }
 
@@ -317,6 +303,20 @@ function MoneyInput({ label, value, onChange }: { label: string; value: number; 
       <input
         type="number"
         value={Math.round(value)}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-white/35"
+      />
+    </label>
+  );
+}
+
+function PercentInput({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[10px] uppercase tracking-wider text-white/25">{label}</span>
+      <input
+        type="number"
+        value={value}
         onChange={(e) => onChange(Number(e.target.value))}
         className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white focus:border-white/35"
       />
