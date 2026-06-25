@@ -88,6 +88,14 @@ export function formatPercent(value: number, fractionDigits = 1): string {
   return `${(value * 100).toFixed(fractionDigits)}%`;
 }
 
+export function getDilutedItems(items: PricedItem[], totalGeral: number, subtotal: number) {
+  const factor = totalGeral / (subtotal || 1);
+  return items.map(item => ({
+    ...item,
+    unit_price: item.unit_price * factor
+  }));
+}
+
 /**
  * Recalcula um orçamento completo a partir dos VALORES APLICADOS dos itens.
  * Garante que o PDF (ou qualquer exportação) seja um espelho exato do estado atual,
