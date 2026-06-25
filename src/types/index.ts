@@ -46,15 +46,23 @@ export interface SystemSettings {
   updated_at: string;
 }
 
-// Item genérico usado no PriceList e nos itens do orçamento.
-// O cálculo principal é unit_price * quantity.
-// cost_price é mantido apenas para controle interno.
+// Item da tabela de preços.
+// Cálculo por item:
+//   fee = cost_price × (fee_percent / 100)
+//   base = cost_price + fee
+//   impostos = base × (tax_percent / 100)
+//   sale_price = base + impostos
+//
+// sale_price é o VALOR DE VENDA FINAL (com fee e impostos embutidos).
+// É ele que vai para o orçamento e para o PDF do cliente.
 export interface PriceListItem {
   id: string;
   category: ServiceCategory;
   name: string;
-  sale_price: number; // valor unitário
-  cost_price: number; // custo unitário
+  cost_price: number;   // custo base (interno)
+  fee_percent: number;  // taxa aplicada por item (%)
+  tax_percent: number;  // imposto aplicado por item (%)
+  sale_price: number;   // valor de venda final (calculado: base + impostos)
   active: boolean;
   updated_at: string;
 }

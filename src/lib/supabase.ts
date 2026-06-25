@@ -10,7 +10,7 @@ import type {
   Template,
   User,
 } from '../types';
-import { calcSubtotal } from './calc';
+import { calcItemSalePrice, calcSubtotal } from './calc';
 
 type TableName = 'users' | 'clients' | 'budgets' | 'budget_items' | 'price_list' | 'templates' | 'system_settings';
 type TableRecord = Budget | Client | BudgetItem | ReelItem | EquipmentItem | ProfessionalItem | PriceListItem | Template | SystemSettings | User;
@@ -20,7 +20,7 @@ const STORAGE_KEYS: Record<TableName | 'auth', string> = {
   clients: 'sim_clients',
   budgets: 'sim_budgets_v2',
   budget_items: 'sim_budget_items_v2',
-  price_list: 'sim_price_list_2025_v3',
+  price_list: 'sim_price_list_2025_v4',
   templates: 'sim_templates_v2',
   system_settings: 'sim_system_settings',
   auth: 'sim_auth',
@@ -60,70 +60,59 @@ const defaultSettings: SystemSettings = {
   updated_at: new Date().toISOString(),
 };
 
-// Tabela mestra de preços 2025 — preço de venda × custo interno.
-// O cálculo é quantidade × sale_price. cost_price serve apenas para gestão.
-const priceSeed: Omit<PriceListItem, 'id' | 'active' | 'updated_at'>[] = [
-  // Pré Produção
-  { category: 'Pré Produção', name: 'Roteiro', sale_price: 3200, cost_price: 1600 },
-  { category: 'Pré Produção', name: 'Storyboard', sale_price: 2400, cost_price: 1200 },
-  { category: 'Pré Produção', name: 'Produtor', sale_price: 2800, cost_price: 1500 },
-  { category: 'Pré Produção', name: 'Produtor Executivo', sale_price: 5200, cost_price: 2800 },
-  // Produção
-  { category: 'Produção', name: 'Diretor', sale_price: 4200, cost_price: 2000 },
-  { category: 'Produção', name: 'Filmmaker', sale_price: 1200, cost_price: 900 },
-  { category: 'Produção', name: 'Diretor de Fotografia', sale_price: 3800, cost_price: 2200 },
-  { category: 'Produção', name: 'Assistente de Câmera', sale_price: 1100, cost_price: 750 },
-  { category: 'Produção', name: 'Assistente de Direção', sale_price: 1400, cost_price: 900 },
-  { category: 'Produção', name: 'Logger', sale_price: 850, cost_price: 600 },
-  { category: 'Produção', name: 'Gaffer', sale_price: 2200, cost_price: 1400 },
-  { category: 'Produção', name: 'Operador de Áudio', sale_price: 1800, cost_price: 1100 },
-  { category: 'Produção', name: 'Drone / FPV', sale_price: 3200, cost_price: 1800 },
-  // Fotografia
-  { category: 'Fotografia', name: 'Fotógrafo', sale_price: 2500, cost_price: 1500 },
-  { category: 'Fotografia', name: 'Assistente de Fotografia', sale_price: 900, cost_price: 650 },
-  // Pós Produção
-  { category: 'Pós Produção', name: 'Edição de Vídeo', sale_price: 3600, cost_price: 2000 },
-  { category: 'Pós Produção', name: 'Edição Sameday', sale_price: 4200, cost_price: 2600 },
-  { category: 'Pós Produção', name: 'Motion', sale_price: 3200, cost_price: 1800 },
-  { category: 'Pós Produção', name: 'VFX', sale_price: 5200, cost_price: 3000 },
-  // Reels (categoria independente com valor próprio)
-  { category: 'Reels', name: 'Edição de Reel', sale_price: 180, cost_price: 90 },
-  { category: 'Reels', name: 'Motion Design Reel', sale_price: 320, cost_price: 160 },
-  { category: 'Reels', name: 'Color Grading Reel', sale_price: 220, cost_price: 110 },
-  // Finalização
-  { category: 'Finalização', name: 'Color Grading', sale_price: 2600, cost_price: 1500 },
-  { category: 'Finalização', name: 'Sound Design', sale_price: 2200, cost_price: 1200 },
-  { category: 'Finalização', name: 'Trilha', sale_price: 3000, cost_price: 1700 },
-  { category: 'Finalização', name: 'Locução', sale_price: 1400, cost_price: 800 },
-  // Logística
-  { category: 'Logística', name: 'Alimentação', sale_price: 650, cost_price: 500 },
-  { category: 'Logística', name: 'Catering', sale_price: 1800, cost_price: 1300 },
-  { category: 'Logística', name: 'Transporte Van', sale_price: 950, cost_price: 700 },
-  { category: 'Logística', name: 'Transporte Uber', sale_price: 350, cost_price: 300 },
-  { category: 'Logística', name: 'Hospedagem', sale_price: 850, cost_price: 650 },
-  // Equipamentos (valor por diária)
-  { category: 'Equipamentos', name: 'Câmera', sale_price: 1200, cost_price: 700 },
-  { category: 'Equipamentos', name: 'Lentes', sale_price: 600, cost_price: 350 },
-  { category: 'Equipamentos', name: 'Iluminação', sale_price: 900, cost_price: 500 },
-  { category: 'Equipamentos', name: 'Drone', sale_price: 1500, cost_price: 800 },
-  { category: 'Equipamentos', name: 'Estabilizador / Gimbal', sale_price: 500, cost_price: 280 },
-  { category: 'Equipamentos', name: 'Áudio / Microfones', sale_price: 450, cost_price: 250 },
-  { category: 'Equipamentos', name: 'Tripé / Suportes', sale_price: 200, cost_price: 100 },
-  { category: 'Equipamentos', name: 'Cartões / Storage', sale_price: 300, cost_price: 150 },
-  // Equipe (valor por diária)
-  { category: 'Equipe', name: 'Diretor', sale_price: 2500, cost_price: 1500 },
-  { category: 'Equipe', name: 'Diretor de Fotografia', sale_price: 2000, cost_price: 1200 },
-  { category: 'Equipe', name: 'Filmmaker', sale_price: 1200, cost_price: 900 },
-  { category: 'Equipe', name: 'Operador de Câmera', sale_price: 1000, cost_price: 600 },
-  { category: 'Equipe', name: 'Assistente de Câmera', sale_price: 600, cost_price: 350 },
-  { category: 'Equipe', name: 'Fotógrafo', sale_price: 1500, cost_price: 900 },
-  { category: 'Equipe', name: 'Produtor', sale_price: 1200, cost_price: 700 },
-  { category: 'Equipe', name: 'Operador de Áudio', sale_price: 800, cost_price: 500 },
-  { category: 'Equipe', name: 'Gaffer / Elétrica', sale_price: 900, cost_price: 550 },
-  { category: 'Equipe', name: 'Piloto de Drone', sale_price: 1200, cost_price: 700 },
-  // Extras
-  { category: 'Extras', name: 'Verba Extra', sale_price: 2500, cost_price: 2500 },
-  { category: 'Extras', name: 'Material Bruto', sale_price: 0, cost_price: 0 },
+// Define-se apenas o custo base — fee, imposto e sale_price são calculados.
+const priceSeedRaw: Array<{ category: string; name: string; cost_price: number }> = [
+  { category: 'Pré Produção', name: 'Roteiro', cost_price: 1600 },
+  { category: 'Pré Produção', name: 'Storyboard', cost_price: 1200 },
+  { category: 'Pré Produção', name: 'Produtor', cost_price: 1500 },
+  { category: 'Pré Produção', name: 'Produtor Executivo', cost_price: 2800 },
+  { category: 'Produção', name: 'Diretor', cost_price: 2000 },
+  { category: 'Produção', name: 'Filmmaker', cost_price: 900 },
+  { category: 'Produção', name: 'Diretor de Fotografia', cost_price: 2200 },
+  { category: 'Produção', name: 'Assistente de Câmera', cost_price: 750 },
+  { category: 'Produção', name: 'Assistente de Direção', cost_price: 900 },
+  { category: 'Produção', name: 'Logger', cost_price: 600 },
+  { category: 'Produção', name: 'Gaffer', cost_price: 1400 },
+  { category: 'Produção', name: 'Operador de Áudio', cost_price: 1100 },
+  { category: 'Produção', name: 'Drone / FPV', cost_price: 1800 },
+  { category: 'Fotografia', name: 'Fotógrafo', cost_price: 1500 },
+  { category: 'Fotografia', name: 'Assistente de Fotografia', cost_price: 650 },
+  { category: 'Pós Produção', name: 'Edição de Vídeo', cost_price: 2000 },
+  { category: 'Pós Produção', name: 'Edição Sameday', cost_price: 2600 },
+  { category: 'Pós Produção', name: 'Motion', cost_price: 1800 },
+  { category: 'Pós Produção', name: 'VFX', cost_price: 3000 },
+  { category: 'Reels', name: 'Edição de Reel', cost_price: 90 },
+  { category: 'Reels', name: 'Motion Design Reel', cost_price: 160 },
+  { category: 'Reels', name: 'Color Grading Reel', cost_price: 110 },
+  { category: 'Finalização', name: 'Color Grading', cost_price: 1500 },
+  { category: 'Finalização', name: 'Sound Design', cost_price: 1200 },
+  { category: 'Finalização', name: 'Trilha', cost_price: 1700 },
+  { category: 'Finalização', name: 'Locução', cost_price: 800 },
+  { category: 'Logística', name: 'Alimentação', cost_price: 500 },
+  { category: 'Logística', name: 'Catering', cost_price: 1300 },
+  { category: 'Logística', name: 'Transporte Van', cost_price: 700 },
+  { category: 'Logística', name: 'Transporte Uber', cost_price: 300 },
+  { category: 'Logística', name: 'Hospedagem', cost_price: 650 },
+  { category: 'Equipamentos', name: 'Câmera', cost_price: 700 },
+  { category: 'Equipamentos', name: 'Lentes', cost_price: 350 },
+  { category: 'Equipamentos', name: 'Iluminação', cost_price: 500 },
+  { category: 'Equipamentos', name: 'Drone', cost_price: 800 },
+  { category: 'Equipamentos', name: 'Estabilizador / Gimbal', cost_price: 280 },
+  { category: 'Equipamentos', name: 'Áudio / Microfones', cost_price: 250 },
+  { category: 'Equipamentos', name: 'Tripé / Suportes', cost_price: 100 },
+  { category: 'Equipamentos', name: 'Cartões / Storage', cost_price: 150 },
+  { category: 'Equipe', name: 'Diretor', cost_price: 1500 },
+  { category: 'Equipe', name: 'Diretor de Fotografia', cost_price: 1200 },
+  { category: 'Equipe', name: 'Filmmaker', cost_price: 900 },
+  { category: 'Equipe', name: 'Operador de Câmera', cost_price: 600 },
+  { category: 'Equipe', name: 'Assistente de Câmera', cost_price: 350 },
+  { category: 'Equipe', name: 'Fotógrafo', cost_price: 900 },
+  { category: 'Equipe', name: 'Produtor', cost_price: 700 },
+  { category: 'Equipe', name: 'Operador de Áudio', cost_price: 500 },
+  { category: 'Equipe', name: 'Gaffer / Elétrica', cost_price: 550 },
+  { category: 'Equipe', name: 'Piloto de Drone', cost_price: 700 },
+  { category: 'Extras', name: 'Verba Extra', cost_price: 2500 },
+  { category: 'Extras', name: 'Material Bruto', cost_price: 0 },
 ];
 
 const templateSeed: Template[] = [
@@ -132,7 +121,7 @@ const templateSeed: Template[] = [
     name: 'Institucional',
     description: 'Narrativa de marca com entrevistas, cenas de atmosfera e acabamento premium.',
     project_type: 'Institucional',
-    production: { shooting_days: 2, city: 'São Paulo', need_transportation: true, need_lodging: false, delivery_days: 20 },
+    production: { shooting_days: 2, city: 'Belo Horizonte', need_transportation: true, need_lodging: false, delivery_days: 20 },
     service_names: ['Roteiro', 'Diretor', 'Filmmaker', 'Diretor de Fotografia', 'Câmera', 'Lentes', 'Iluminação', 'Edição de Vídeo', 'Color Grading', 'Sound Design'],
     reel_names: ['Edição de Reel'],
     equipment_names: ['Câmera', 'Lentes', 'Iluminação'],
@@ -144,7 +133,7 @@ const templateSeed: Template[] = [
     name: 'Evento',
     description: 'Cobertura de evento com captação multicâmera, fotografia e entrega social.',
     project_type: 'Evento',
-    production: { shooting_days: 1, city: 'São Paulo', need_transportation: true, need_lodging: false, delivery_days: 5 },
+    production: { shooting_days: 1, city: 'Belo Horizonte', need_transportation: true, need_lodging: false, delivery_days: 5 },
     service_names: ['Edição Sameday', 'Edição de Vídeo', 'Transporte Van', 'Alimentação'],
     reel_names: ['Edição de Reel', 'Edição de Reel'],
     equipment_names: ['Câmera', 'Iluminação'],
@@ -156,7 +145,7 @@ const templateSeed: Template[] = [
     name: 'Publicidade',
     description: 'Campanha com direção criativa, produção robusta e pós-produção completa.',
     project_type: 'Publicidade',
-    production: { shooting_days: 2, city: 'São Paulo', need_transportation: true, need_lodging: false, delivery_days: 25 },
+    production: { shooting_days: 2, city: 'Belo Horizonte', need_transportation: true, need_lodging: false, delivery_days: 25 },
     service_names: ['Roteiro', 'Storyboard', 'Produtor Executivo', 'Produtor', 'Diretor', 'Diretor de Fotografia', 'Assistente de Câmera', 'Gaffer', 'Câmera', 'Lentes', 'Iluminação', 'Edição de Vídeo', 'Motion', 'Color Grading', 'Sound Design'],
     reel_names: ['Edição de Reel', 'Motion Design Reel'],
     equipment_names: ['Câmera', 'Lentes', 'Iluminação'],
@@ -168,7 +157,7 @@ const templateSeed: Template[] = [
     name: 'Podcast',
     description: 'Captação multicâmera com áudio dedicado e edição para episódio completo e cortes.',
     project_type: 'Podcast',
-    production: { shooting_days: 1, city: 'São Paulo', need_transportation: true, need_lodging: false, delivery_days: 7 },
+    production: { shooting_days: 1, city: 'Belo Horizonte', need_transportation: true, need_lodging: false, delivery_days: 7 },
     service_names: ['Edição de Vídeo', 'Sound Design'],
     reel_names: ['Edição de Reel'],
     equipment_names: ['Câmera', 'Iluminação'],
@@ -180,7 +169,7 @@ const templateSeed: Template[] = [
     name: 'Reels',
     description: 'Produção vertical enxuta com ritmo editorial e entrega rápida.',
     project_type: 'Reels',
-    production: { shooting_days: 1, city: 'São Paulo', need_transportation: false, need_lodging: false, delivery_days: 3 },
+    production: { shooting_days: 1, city: 'Belo Horizonte', need_transportation: false, need_lodging: false, delivery_days: 3 },
     service_names: ['Edição de Vídeo', 'Motion', 'Transporte Uber'],
     reel_names: ['Edição de Reel', 'Edição de Reel', 'Edição de Reel', 'Edição de Reel', 'Edição de Reel', 'Edição de Reel'],
     equipment_names: ['Câmera'],
@@ -192,7 +181,7 @@ const templateSeed: Template[] = [
     name: 'Cobertura',
     description: 'Cobertura documental com fotografia, vídeo e pacote de redes sociais.',
     project_type: 'Cobertura',
-    production: { shooting_days: 1, city: 'São Paulo', need_transportation: true, need_lodging: false, delivery_days: 7 },
+    production: { shooting_days: 1, city: 'Belo Horizonte', need_transportation: true, need_lodging: false, delivery_days: 7 },
     service_names: ['Edição de Vídeo', 'Color Grading', 'Transporte Van', 'Alimentação'],
     reel_names: ['Edição de Reel'],
     equipment_names: ['Câmera'],
@@ -272,9 +261,19 @@ function seed() {
   }
   if (getStorage<PriceListItem[]>(STORAGE_KEYS.price_list, []).length === 0) {
     const now = new Date().toISOString();
+    const fee = defaultSettings.fee_percentage;
+    const tax = defaultSettings.tax_percentage;
     setStorage(
       STORAGE_KEYS.price_list,
-      priceSeed.map((item) => ({ ...item, id: generateId(), active: true, updated_at: now })),
+      priceSeedRaw.map((item) => ({
+        ...item,
+        id: generateId(),
+        fee_percent: fee,
+        tax_percent: tax,
+        sale_price: calcItemSalePrice(item.cost_price, fee, tax),
+        active: true,
+        updated_at: now,
+      })),
     );
   }
   if (getStorage<Template[]>(STORAGE_KEYS.templates, []).length === 0) {
@@ -282,103 +281,6 @@ function seed() {
   }
   if (getStorage<User[]>(STORAGE_KEYS.users, []).length === 0) {
     setStorage(STORAGE_KEYS.users, [{ id: 'user-1', email: 'jay@admin.com.br' }]);
-  }
-  if (getStorage<Budget[]>(STORAGE_KEYS.budgets, []).length === 0) {
-    const prices = getStorage<PriceListItem[]>(STORAGE_KEYS.price_list, []);
-    const find = (name: string) => prices.find((p) => p.name === name);
-    const now = new Date();
-    const expires = new Date(now);
-    expires.setDate(expires.getDate() + defaultSettings.proposal_validity_days);
-
-    const servicesRaw: Array<{ name: string; category: string }> = [
-      { name: 'Roteiro', category: 'Pré Produção' },
-      { name: 'Diretor', category: 'Produção' },
-      { name: 'Filmmaker', category: 'Produção' },
-      { name: 'Diretor de Fotografia', category: 'Produção' },
-      { name: 'Câmera', category: 'Equipamentos' },
-      { name: 'Lentes', category: 'Equipamentos' },
-      { name: 'Iluminação', category: 'Equipamentos' },
-      { name: 'Edição de Vídeo', category: 'Pós Produção' },
-      { name: 'Color Grading', category: 'Finalização' },
-      { name: 'Sound Design', category: 'Finalização' },
-      { name: 'Material Bruto', category: 'Extras' },
-    ];
-
-    const services: BudgetItem[] = servicesRaw
-      .map((s) => find(s.name))
-      .filter(Boolean)
-      .map((p) => ({
-        id: generateId(),
-        budget_id: 'demo-premium-2025',
-        price_list_id: p!.id,
-        category: p!.category,
-        name: p!.name,
-        quantity: 1,
-        unit_price: p!.sale_price,
-        cost_price: p!.cost_price,
-        subtotal: p!.sale_price,
-        custom_pricing: false,
-      }));
-
-    const reels: ReelItem[] = [
-      { id: generateId(), name: 'Edição de Reel', quantity: 3, unit_price: find('Edição de Reel')?.sale_price || 180, cost_price: find('Edição de Reel')?.cost_price || 90, subtotal: 0 },
-    ].map((r) => ({ ...r, subtotal: r.quantity * r.unit_price }));
-
-    const equipment: EquipmentItem[] = [
-      { id: generateId(), name: 'Câmera', daily_rate: 2200, days: 2, pickup_date: undefined, return_date: undefined, cost_price: 1200, subtotal: 4400 },
-      { id: generateId(), name: 'Lentes', daily_rate: 1300, days: 2, pickup_date: undefined, return_date: undefined, cost_price: 700, subtotal: 2600 },
-      { id: generateId(), name: 'Iluminação', daily_rate: 1800, days: 2, pickup_date: undefined, return_date: undefined, cost_price: 1000, subtotal: 3600 },
-    ];
-
-    const professionals: ProfessionalItem[] = [
-      { id: generateId(), name: 'Diretor', daily_rate: 4200, days: 2, cost_price: 2000, subtotal: 8400 },
-      { id: generateId(), name: 'Filmmaker', daily_rate: 1200, days: 2, cost_price: 900, subtotal: 2400 },
-      { id: generateId(), name: 'Diretor de Fotografia', daily_rate: 3800, days: 2, cost_price: 2200, subtotal: 7600 },
-    ];
-
-    const demo: Budget = {
-      id: 'demo-premium-2025',
-      client_id: 'client-demo-premium',
-      client_name: 'Marina Rocha',
-      client_company: 'Rocha Studio',
-      client_whatsapp: '(11) 98888-2025',
-      client_email: 'marina@rochastudio.com',
-      project_name: 'Manifesto Rocha Studio',
-      project_type: 'Institucional',
-      project_description:
-        'Filme manifesto com linguagem cinematográfica, entrevistas e imagens de processo para lançamento de nova identidade.',
-      production: {
-        shooting_days: 2,
-        city: 'São Paulo',
-        need_transportation: true,
-        need_lodging: false,
-        delivery_days: 20,
-        start_date: undefined,
-      },
-      services,
-      reels,
-      equipment,
-      professionals,
-      status: 'Sent',
-      created_at: now.toISOString(),
-      updated_at: now.toISOString(),
-      expires_at: expires.toISOString(),
-      expiration_date: expires.toISOString(),
-      proposal_date: now.toISOString(),
-      online_slug: 'manifesto-rocha-studio-demo',
-      cost_total: 0,
-      fee_value: 0,
-      tax_value: 0,
-      final_price: 0,
-      profit: 0,
-      margin: 0,
-      material_bruto_value: 0,
-      type: 'Institucional',
-      budget_date: now.toISOString(),
-      client_phone: '(11) 98888-2025',
-    };
-
-    setStorage(STORAGE_KEYS.budgets, [demo]);
   }
 }
 
