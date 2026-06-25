@@ -64,14 +64,18 @@ function makePrice(
   category: PriceListItem['category'],
   name: string,
   cost_base: number,
+  price_base?: number,
   fee_percent = defaultSettings.fee_percentage,
   tax_percent = defaultSettings.tax_percentage,
 ): Omit<PriceListItem, 'id' | 'active' | 'updated_at'> {
-  const pricing = calcItemPricing(cost_base, fee_percent, tax_percent);
+  // Preço base padrão = custo × 1.5 (margem comercial). Editável na tabela.
+  const base = price_base ?? Math.round(cost_base * 1.5);
+  const pricing = calcItemPricing(cost_base, fee_percent, tax_percent, base);
   return {
     category,
     name,
     cost_base,
+    price_base: base,
     fee_percent,
     tax_percent,
     sale_price: pricing.sale_price,
@@ -138,8 +142,8 @@ const priceSeed: Omit<PriceListItem, 'id' | 'active' | 'updated_at'>[] = [
   makePrice('Equipe', 'Gaffer / Elétrica', 550),
   makePrice('Equipe', 'Piloto de Drone', 700),
 
-  makePrice('Extras', 'Verba Extra', 2500, 0, 0),
-  makePrice('Extras', 'Material Bruto', 0, 0, 0),
+  makePrice('Extras', 'Verba Extra', 2500, 2500, 0, 0),
+  makePrice('Extras', 'Material Bruto', 0, 0, 0, 0),
 ];
 
 const templateSeed: Template[] = [
@@ -246,16 +250,20 @@ function writeTable(table: string, data: TableRecord[]) {
 
 function normalizePrice(item: PriceListItem): PriceListItem {
   const cost_base = item.cost_base ?? getCostBase(item);
+  const price_base = item.price_base ?? item.sale_price ?? cost_base;
   const fee_percent = item.fee_percent ?? defaultSettings.fee_percentage;
   const tax_percent = item.tax_percent ?? defaultSettings.tax_percentage;
-  const pricing = calcItemPricing(cost_base, fee_percent, tax_percent);
+  const pricing = calcItemPricing(cost_base, fee_percent, tax_percent, price_base);
   return {
     ...item,
     cost_base,
+    price_base,
     cost_price: cost_base,
     fee_percent,
     tax_percent,
-    sale_price: item.sale_price ?? pricing.sale_price,
+    sale_price: pricing.sale_price,
+    custom_fee: item.custom_fee ?? false,
+    custom_tax: item.custom_tax ?? false,
   };
 }
 
@@ -347,6 +355,7 @@ function seed() {
         quantity: 1,
         unit_price: p!.sale_price,
         cost_base: p!.cost_base,
+        price_base: p!.price_base,
         cost_price: p!.cost_base,
         fee_percent: p!.fee_percent,
         tax_percent: p!.tax_percent,
@@ -361,6 +370,7 @@ function seed() {
       quantity: 3,
       unit_price: reelPrice.sale_price,
       cost_base: reelPrice.cost_base,
+      price_base: reelPrice.price_base,
       cost_price: reelPrice.cost_base,
       fee_percent: reelPrice.fee_percent,
       tax_percent: reelPrice.tax_percent,
@@ -376,6 +386,7 @@ function seed() {
       pickup_date: undefined,
       return_date: undefined,
       cost_base: p!.cost_base,
+      price_base: p!.price_base,
       cost_price: p!.cost_base,
       fee_percent: p!.fee_percent,
       tax_percent: p!.tax_percent,
@@ -389,6 +400,7 @@ function seed() {
       daily_rate: p!.sale_price,
       days: 2,
       cost_base: p!.cost_base,
+      price_base: p!.price_base,
       cost_price: p!.cost_base,
       fee_percent: p!.fee_percent,
       tax_percent: p!.tax_percent,

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Save, Search, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { Plus, RotateCcw, Save, Search, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { t } from '../lib/i18n';
 import { formatCurrency, generateId, getSettings, supabase } from '../lib/supabase';
@@ -43,7 +43,12 @@ export function PriceList() {
       current.map((item) => {
         if (item.id !== id) return item;
         const next = { ...item, ...updates, updated_at: new Date().toISOString() };
-        const pricing = calcItemPricing(next.cost_base, next.fee_percent, next.tax_percent);
+        
+        // Marcar flags de customização
+        if ('fee_percent' in updates) next.custom_fee = true;
+        if ('tax_percent' in updates) next.custom_tax = true;
+
+        const pricing = calcItemPricing(next.cost_base, next.fee_percent, next.tax_percent, next.price_base);
         next.sale_price = pricing.sale_price;
         next.cost_price = next.cost_base;
         return next;
@@ -51,18 +56,50 @@ export function PriceList() {
     );
     const found = items.find((item) => item.id === id);
     const merged = { ...found, ...updates } as PriceListItem;
-    const pricing = calcItemPricing(merged.cost_base, merged.fee_percent, merged.tax_percent);
+    const pricing = calcItemPricing(merged.cost_base, merged.fee_percent, merged.tax_percent, merged.price_base);
     await supabase.from('price_list').update({ ...updates, sale_price: pricing.sale_price, cost_price: merged.cost_base }).eq('id', id);
   }
 
+  // Aplicar taxas globais aos itens que não têm customização
+  const applyGlobalRates = useCallback((newSettings: SystemSettings, currentItems: PriceListItem[]) => {
+    return currentItems.map(item => {
+      let updated = false;
+      const next = { ...item };
+      if (!item.custom_fee && item.fee_percent !== newSettings.fee_percentage) {
+        next.fee_percent = newSettings.fee_percentage;
+        updated = true;
+      }
+      if (!item.custom_tax && item.tax_percent !== newSettings.tax_percentage) {
+        next.tax_percent = newSettings.tax_percentage;
+        updated = true;
+      }
+      if (updated) {
+        const pricing = calcItemPricing(next.cost_base, next.fee_percent, next.tax_percent, next.price_base);
+        next.sale_price = pricing.sale_price;
+        next.updated_at = new Date().toISOString();
+        // Salvar no DB
+        supabase.from('price_list').update({ fee_percent: next.fee_percent, tax_percent: next.tax_percent, sale_price: next.sale_price }).eq('id', next.id);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleGlobalSettingChange = (key: keyof SystemSettings, value: number) => {
+    const nextSettings = { ...settings, [key]: value };
+    setSettings(nextSettings);
+    const nextItems = applyGlobalRates(nextSettings, items);
+    setItems(nextItems);
+  };
+
   async function addItem() {
     const category = activeCategory === 'all' ? CATEGORIES[0] : activeCategory;
-    const pricing = calcItemPricing(0, settings.fee_percentage, settings.tax_percentage);
+    const pricing = calcItemPricing(0, settings.fee_percentage, settings.tax_percentage, 0);
     const newItem: PriceListItem = {
       id: generateId(),
       category,
       name: 'Novo item',
       cost_base: 0,
+      price_base: 0,
       fee_percent: settings.fee_percentage,
       tax_percent: settings.tax_percentage,
       sale_price: pricing.sale_price,
@@ -119,8 +156,8 @@ export function PriceList() {
         </motion.header>
 
         <section className="grid gap-4 md:grid-cols-3">
-          <SettingField label={t.feePercentage} value={settings.fee_percentage} onChange={(v) => setSettings({ ...settings, fee_percentage: v })} suffix="%" />
-          <SettingField label={t.taxPercentage} value={settings.tax_percentage} onChange={(v) => setSettings({ ...settings, tax_percentage: v })} suffix="%" />
+          <SettingField label={t.feePercentage} value={settings.fee_percentage} onChange={(v) => handleGlobalSettingChange('fee_percentage', v)} suffix="%" />
+          <SettingField label={t.taxPercentage} value={settings.tax_percentage} onChange={(v) => handleGlobalSettingChange('tax_percentage', v)} suffix="%" />
           <SettingField label={t.proposalValidity} value={settings.proposal_validity_days} onChange={(v) => setSettings({ ...settings, proposal_validity_days: v })} suffix={t.days.toLowerCase()} />
         </section>
 
@@ -196,7 +233,7 @@ export function PriceList() {
 
           <div className="space-y-2">
             {filtered.map((item) => (
-              <PriceRow key={item.id} item={item} onUpdate={updatePrice} onRemove={removeItem} />
+              <PriceRow key={item.id} item={item} onUpdate={updatePrice} onRemove={removeItem} globalSettings={settings} />
             ))}
             {filtered.length === 0 && (
               <p className="rounded-2xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-white/35">
@@ -225,14 +262,26 @@ function PriceRow({
   item,
   onUpdate,
   onRemove,
+  globalSettings,
 }: {
   item: PriceListItem;
   onUpdate: (id: string, u: Partial<PriceListItem>) => void;
   onRemove: (id: string) => void;
+  globalSettings: SystemSettings;
 }) {
-  const spread = item.sale_price - item.cost_base;
+  const lucro = item.price_base - item.cost_base;
+  const isCustomFee = item.custom_fee;
+  const isCustomTax = item.custom_tax;
+
+  const resetToGlobal = () => {
+    const updates: Partial<PriceListItem> = { custom_fee: false, custom_tax: false };
+    if (isCustomFee) updates.fee_percent = globalSettings.fee_percentage;
+    if (isCustomTax) updates.tax_percent = globalSettings.tax_percentage;
+    onUpdate(item.id, updates);
+  };
+
   return (
-    <div className="grid gap-3 overflow-hidden rounded-2xl border border-white/10 bg-black/25 p-4 xl:grid-cols-[minmax(0,1.2fr)_120px_90px_90px_120px_120px_60px] xl:items-center">
+    <div className="grid gap-3 overflow-hidden rounded-2xl border border-white/10 bg-black/25 p-4 2xl:grid-cols-[minmax(0,1.1fr)_110px_110px_90px_90px_130px] 2xl:items-center">
       <div className="min-w-0">
         <input
           type="text"
@@ -243,27 +292,54 @@ function PriceRow({
         <p className="mt-1 text-xs text-white/35">{item.category}</p>
       </div>
       <MoneyInput label="Custo Base" value={item.cost_base} onChange={(v) => onUpdate(item.id, { cost_base: v })} />
-      <PercentInput label="Fee %" value={item.fee_percent} onChange={(v) => onUpdate(item.id, { fee_percent: v })} />
-      <PercentInput label="Imposto %" value={item.tax_percent} onChange={(v) => onUpdate(item.id, { tax_percent: v })} />
-      <div className="text-right text-xs text-white/35">
-        <p>Venda Final</p>
-        <p className="truncate text-sm text-white/85" title={formatCurrency(item.sale_price)}>
-          {formatCurrency(item.sale_price)}
-        </p>
+      <MoneyInput label="Preço Base" value={item.price_base} onChange={(v) => onUpdate(item.id, { price_base: v })} />
+      <div className="relative">
+        <PercentInput label={`Fee % ${isCustomFee ? '(Personalizado)' : '(Global)'}`} value={item.fee_percent} onChange={(v) => onUpdate(item.id, { fee_percent: v })} />
+        {isCustomFee && (
+          <span className="absolute -top-1 -right-1 flex h-3 w-3">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+          </span>
+        )}
       </div>
-      <div className="text-right text-xs text-white/35">
-        <p>Spread</p>
-        <p className="truncate text-sm text-white/70" title={formatCurrency(spread)}>
-          {formatCurrency(spread)}
-        </p>
+      <div className="relative">
+        <PercentInput label={`Imposto % ${isCustomTax ? '(Personalizado)' : '(Global)'}`} value={item.tax_percent} onChange={(v) => onUpdate(item.id, { tax_percent: v })} />
+        {isCustomTax && (
+          <span className="absolute -top-1 -right-1 flex h-3 w-3">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+          </span>
+        )}
       </div>
-      <button
-        onClick={() => onRemove(item.id)}
-        className="self-center rounded-xl p-2 text-white/30 hover:bg-red-500/10 hover:text-red-400"
-        title={t.removeItem}
-      >
-        <Trash2 size={14} />
-      </button>
+      <div className="flex items-center justify-between gap-2 2xl:flex-col 2xl:items-end 2xl:gap-0">
+        <div className="text-right text-xs text-white/35">
+          <p>Preço Final</p>
+          <p className="truncate text-sm font-semibold text-accent" title={formatCurrency(item.sale_price)}>
+            {formatCurrency(item.sale_price)}
+          </p>
+          <p className="mt-0.5 text-[10px] text-white/30" title={`Lucro bruto: ${formatCurrency(lucro)}`}>
+            Lucro {formatCurrency(lucro)}
+          </p>
+        </div>
+        <div className="flex gap-1">
+          {(isCustomFee || isCustomTax) && (
+            <button
+              onClick={resetToGlobal}
+              className="shrink-0 rounded-xl p-2 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300"
+              title="Usar configuração global novamente"
+            >
+              <RotateCcw size={14} />
+            </button>
+          )}
+          <button
+            onClick={() => onRemove(item.id)}
+            className="shrink-0 rounded-xl p-2 text-white/30 hover:bg-red-500/10 hover:text-red-400"
+            title={t.removeItem}
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

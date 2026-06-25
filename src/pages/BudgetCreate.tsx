@@ -376,7 +376,11 @@ export function BudgetCreate() {
             name: price.name,
             quantity: ov.qty,
             unit_price: ov.applied_price,
-            cost_price: price.cost_price,
+            cost_base: price.cost_base,
+            price_base: price.price_base,
+            cost_price: price.cost_base,
+            fee_percent: price.fee_percent,
+            tax_percent: price.tax_percent,
             subtotal: ov.qty * ov.applied_price,
             base_price: ov.base_price,
           } as ReelItem & { base_price: number };
@@ -397,6 +401,7 @@ export function BudgetCreate() {
             daily_rate: ov.applied_price,
             days: ov.qty,
             cost_base: price.cost_base,
+            price_base: price.price_base,
             cost_price: price.cost_base,
             fee_percent: price.fee_percent,
             tax_percent: price.tax_percent,
@@ -421,7 +426,11 @@ export function BudgetCreate() {
             name: price.name,
             daily_rate: ov.applied_price,
             days: ov.qty,
-            cost_price: price.cost_price,
+            cost_base: price.cost_base,
+            price_base: price.price_base,
+            cost_price: price.cost_base,
+            fee_percent: price.fee_percent,
+            tax_percent: price.tax_percent,
             subtotal: ov.qty * ov.applied_price,
             base_price: ov.base_price,
           } as ProfessionalItem & { base_price: number };
@@ -432,10 +441,10 @@ export function BudgetCreate() {
 
   const allPricedItems: PricedItem[] = useMemo(
     () => [
-      ...servicesList.map((item) => ({ quantity: item.quantity, unit_price: item.unit_price, cost_price: item.cost_price, name: item.name })),
-      ...reelsList.map((item) => ({ quantity: item.quantity, unit_price: item.unit_price, cost_price: item.cost_price, name: item.name })),
-      ...equipmentList.map((item) => ({ quantity: item.days, unit_price: item.daily_rate, cost_price: item.cost_price, name: item.name })),
-      ...professionalsList.map((item) => ({ quantity: item.days, unit_price: item.daily_rate, cost_price: item.cost_price, name: item.name })),
+      ...servicesList.map((item) => ({ quantity: item.quantity, unit_price: item.unit_price, cost_base: item.cost_base, price_base: item.price_base, fee_percent: item.fee_percent, tax_percent: item.tax_percent, name: item.name })),
+      ...reelsList.map((item) => ({ quantity: item.quantity, unit_price: item.unit_price, cost_base: item.cost_base, price_base: item.price_base, fee_percent: item.fee_percent, tax_percent: item.tax_percent, name: item.name })),
+      ...equipmentList.map((item) => ({ quantity: item.days, unit_price: item.daily_rate, cost_base: item.cost_base, price_base: item.price_base, fee_percent: item.fee_percent, tax_percent: item.tax_percent, name: item.name })),
+      ...professionalsList.map((item) => ({ quantity: item.days, unit_price: item.daily_rate, cost_base: item.cost_base, price_base: item.price_base, fee_percent: item.fee_percent, tax_percent: item.tax_percent, name: item.name })),
     ],
     [servicesList, reelsList, equipmentList, professionalsList],
   );

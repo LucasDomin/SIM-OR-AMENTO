@@ -3,8 +3,9 @@
 
 export interface PricedItem {
   quantity: number;
-  unit_price: number;        // valor unitário final aplicado no orçamento
+  unit_price: number;        // preço FINAL aplicado no orçamento (precoFinal)
   cost_base?: number;        // custo base unitário
+  price_base?: number;       // preço base (valor que quero receber)
   cost_price?: number;       // legado / compatibilidade
   fee_percent?: number;
   tax_percent?: number;
@@ -19,12 +20,14 @@ export interface CategorySummary {
 
 export interface ItemPricingBreakdown {
   cost_base: number;
+  price_base: number;       // preço base (valor que quero receber)
   fee_percent: number;
   tax_percent: number;
   fee_value: number;
-  base_commercial: number;
   tax_value: number;
-  sale_price: number;
+  gross_profit: number;     // lucro bruto = preço base - custo base
+  base_commercial: number;  // = price_base (compat)
+  sale_price: number;       // preço final cliente
 }
 
 export interface BudgetFinancials {
@@ -52,16 +55,41 @@ export function calcCost(item: PricedItem): number {
   return (Number(item.quantity) || 0) * getCostBase(item);
 }
 
+/**
+ * Lógica de 3 níveis:
+ * 1. custoBase  → custo real
+ * 2. precoBase  → valor comercial definido manualmente (o que quero receber)
+ * 3. precoFinal → precoBase com FEE + Impostos embutidos
+ *
+ * Fórmula:
+ * taxaTotal = feePercent + impostoPercent
+ * precoFinal = precoBase * (1 + taxaTotal / 100)
+ *
+ * lucroBruto = precoBase - custoBase
+ */
 export function calcItemPricing(
   costBase: number,
   feePercent: number,
   taxPercent: number,
+  priceBase?: number,
 ): ItemPricingBreakdown {
-  const fee_value = costBase * ((feePercent || 0) / 100);
-  const base_commercial = costBase + fee_value;
-  const tax_value = base_commercial * ((taxPercent || 0) / 100);
-  const sale_price = base_commercial + tax_value;
-  return { cost_base: costBase, fee_percent: feePercent, tax_percent: taxPercent, fee_value, base_commercial, tax_value, sale_price };
+  const base_price = priceBase ?? costBase; // se não houver preço base, usa custo
+  const taxaTotal = (feePercent || 0) + (taxPercent || 0);
+  const sale_price = base_price * (1 + taxaTotal / 100);
+  const fee_value = base_price * ((feePercent || 0) / 100);
+  const tax_value = base_price * ((taxPercent || 0) / 100);
+  const gross_profit = base_price - costBase;
+  return {
+    cost_base: costBase,
+    price_base: base_price,
+    fee_percent: feePercent,
+    tax_percent: taxPercent,
+    fee_value,
+    tax_value,
+    gross_profit,
+    base_commercial: base_price,
+    sale_price,
+  };
 }
 
 /**
@@ -73,23 +101,35 @@ export function calcItemPricing(
  * fee = baseComercial - custoBase
  * impostos = valorAplicado - baseComercial
  */
+/**
+ * Quando o preço final foi ajustado manualmente no orçamento, derivamos o
+ * preço base implícito a partir das taxas (fee + imposto) e o lucro bruto.
+ *
+ * precoBase = precoFinal / (1 + taxaTotal/100)
+ * fee = precoBase * feePercent/100
+ * imposto = precoBase * impostoPercent/100
+ * lucroBruto = precoBase - custoBase
+ */
 export function deriveAppliedBreakdown(
   costBase: number,
   appliedSalePrice: number,
+  feePercent: number,
   taxPercent: number,
 ): ItemPricingBreakdown {
-  const taxRate = (taxPercent || 0) / 100;
-  const base_commercial = appliedSalePrice / (1 + taxRate);
-  const fee_value = base_commercial - costBase;
-  const tax_value = appliedSalePrice - base_commercial;
-  const fee_percent = costBase > 0 ? (fee_value / costBase) * 100 : 0;
+  const taxaTotal = (feePercent || 0) + (taxPercent || 0);
+  const price_base = appliedSalePrice / (1 + taxaTotal / 100);
+  const fee_value = price_base * ((feePercent || 0) / 100);
+  const tax_value = price_base * ((taxPercent || 0) / 100);
+  const gross_profit = price_base - costBase;
   return {
     cost_base: costBase,
-    fee_percent,
+    price_base,
+    fee_percent: feePercent,
     tax_percent: taxPercent,
     fee_value,
-    base_commercial,
     tax_value,
+    gross_profit,
+    base_commercial: price_base,
     sale_price: appliedSalePrice,
   };
 }
@@ -115,27 +155,32 @@ export function calcFinancials(
   let fee_value = 0;
   let tax_value = 0;
 
+  let price_base_total = 0;
+
   items.forEach((item) => {
     const qty = Number(item.quantity) || 0;
-    const applied = Number(item.unit_price) || 0;
+    const applied = Number(item.unit_price) || 0;        // precoFinal aplicado
     const costBase = getCostBase(item);
     const fallbackFee = item.fee_percent ?? settings?.fee_percentage ?? 15;
     const fallbackTax = item.tax_percent ?? settings?.tax_percentage ?? 7;
 
-    const formula = calcItemPricing(costBase, fallbackFee, fallbackTax);
+    // Preço base do item (valor que quero receber). Se houver price_base, usamos a fórmula direta;
+    // caso o preço final tenha sido customizado, derivamos o preço base implícito.
+    const formula = calcItemPricing(costBase, fallbackFee, fallbackTax, item.price_base);
     const breakdown = Math.abs(formula.sale_price - applied) < 0.01
       ? formula
-      : deriveAppliedBreakdown(costBase, applied, fallbackTax);
+      : deriveAppliedBreakdown(costBase, applied, fallbackFee, fallbackTax);
 
     subtotal += applied * qty;
     cost_total += breakdown.cost_base * qty;
+    price_base_total += breakdown.price_base * qty;
     fee_value += breakdown.fee_value * qty;
     tax_value += breakdown.tax_value * qty;
   });
 
-  const base = cost_total + fee_value;
-  const final_price = subtotal;
-  const profit = final_price - cost_total - tax_value;
+  const base = price_base_total;                          // total do preço base
+  const final_price = subtotal;                           // total cliente (com taxas)
+  const profit = price_base_total - cost_total;           // lucro bruto = preço base - custo
   const margin = final_price > 0 ? profit / final_price : 0;
 
   return {
@@ -192,11 +237,12 @@ export function recalcBudgetSnapshot<
     subtotal: (Number(p.days) || 0) * (Number(p.daily_rate) || 0),
   }));
 
+  const pb = (x: unknown): number | undefined => (x as { price_base?: number }).price_base;
   const pricedItems: Array<PricedItem & { name?: string }> = [
-    ...services.map((s) => ({ quantity: s.quantity, unit_price: s.unit_price, cost_base: s.cost_base, fee_percent: s.fee_percent, tax_percent: s.tax_percent, name: s.name })),
-    ...reels.map((r) => ({ quantity: r.quantity, unit_price: r.unit_price, cost_base: r.cost_base, fee_percent: r.fee_percent, tax_percent: r.tax_percent, name: r.name })),
-    ...equipment.map((e) => ({ quantity: e.days, unit_price: e.daily_rate, cost_base: e.cost_base, fee_percent: e.fee_percent, tax_percent: e.tax_percent, name: e.name })),
-    ...professionals.map((p) => ({ quantity: p.days, unit_price: p.daily_rate, cost_base: p.cost_base, fee_percent: p.fee_percent, tax_percent: p.tax_percent, name: p.name })),
+    ...services.map((s) => ({ quantity: s.quantity, unit_price: s.unit_price, cost_base: s.cost_base, price_base: pb(s), fee_percent: s.fee_percent, tax_percent: s.tax_percent, name: s.name })),
+    ...reels.map((r) => ({ quantity: r.quantity, unit_price: r.unit_price, cost_base: r.cost_base, price_base: pb(r), fee_percent: r.fee_percent, tax_percent: r.tax_percent, name: r.name })),
+    ...equipment.map((e) => ({ quantity: e.days, unit_price: e.daily_rate, cost_base: e.cost_base, price_base: pb(e), fee_percent: e.fee_percent, tax_percent: e.tax_percent, name: e.name })),
+    ...professionals.map((p) => ({ quantity: p.days, unit_price: p.daily_rate, cost_base: p.cost_base, price_base: pb(p), fee_percent: p.fee_percent, tax_percent: p.tax_percent, name: p.name })),
   ];
 
   const financials = calcFinancials(pricedItems, settings);

@@ -53,10 +53,14 @@ export interface PriceListItem {
   id: string;
   category: ServiceCategory;
   name: string;
-  cost_base: number;       // custo base unitário
+  cost_base: number;       // 1. custo base unitário (custo real)
+  price_base: number;      // 2. preço base (valor que quero receber)
   fee_percent: number;     // fee do item
   tax_percent: number;     // imposto do item
-  sale_price: number;      // valor de venda final do item
+  sale_price: number;      // 3. preço final cliente (com taxas embutidas)
+  // Flags de override
+  custom_fee?: boolean;    // true se a taxa foi alterada manualmente neste item
+  custom_tax?: boolean;    // true se o imposto foi alterado manualmente neste item
   // legado / compatibilidade interna
   cost_price?: number;
   active: boolean;
@@ -71,8 +75,9 @@ export interface BudgetItem {
   category: ServiceCategory;
   name: string;
   quantity: number;
-  unit_price: number;      // valor aplicado no orçamento (pode ser customizado)
+  unit_price: number;      // preço FINAL aplicado no orçamento (pode ser customizado)
   cost_base: number;
+  price_base: number;
   fee_percent: number;
   tax_percent: number;
   subtotal: number;
@@ -88,6 +93,7 @@ export interface ReelItem {
   quantity: number;
   unit_price: number;
   cost_base: number;
+  price_base: number;
   fee_percent: number;
   tax_percent: number;
   subtotal: number;
@@ -103,6 +109,7 @@ export interface EquipmentItem {
   pickup_date?: string;
   return_date?: string;
   cost_base: number;
+  price_base: number;
   fee_percent: number;
   tax_percent: number;
   subtotal: number;
@@ -116,6 +123,7 @@ export interface ProfessionalItem {
   daily_rate: number;
   days: number;
   cost_base: number;
+  price_base: number;
   fee_percent: number;
   tax_percent: number;
   subtotal: number;
