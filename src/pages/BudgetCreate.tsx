@@ -19,6 +19,8 @@ import {
 import { Layout } from '../components/Layout';
 import { formatCurrency, generateId, getSettings, supabase } from '../lib/supabase';
 import { calcFinancials, formatPercent, type PricedItem } from '../lib/calc';
+import { generateClientPDF } from '../lib/generateClientPDF';
+import { generateInternalPDF } from '../lib/generateInternalPDF';
 import { t } from '../lib/i18n';
 import {
   clearDraft,
@@ -462,9 +464,11 @@ export function BudgetCreate() {
     return true;
   }
 
-  // ── Salvar orçamento ──────────────────────────────────────────────
-  async function saveBudget(status: Budget['status']) {
-    setSaving(true);
+  // ── Montar o objeto do orçamento a partir do rascunho atual ───────
+  // Não grava nada no banco — apenas monta os dados em memória para
+  // pré-visualização ou geração de PDF. O rascunho continua editável
+  // livremente até a gravação real acontecer (ver handleGeneratePDF).
+  function buildBudgetObject(status: Budget['status']) {
     const now = new Date();
     const expires = new Date(now);
     expires.setDate(expires.getDate() + settings.proposal_validity_days);
@@ -511,12 +515,45 @@ export function BudgetCreate() {
       client_phone: client.whatsapp,
     };
 
-    await supabase.from('clients').insert({ id: clientId, ...client, created_at: now.toISOString() });
-    await supabase.from('budgets').insert(budget);
-    await supabase.from('budget_items').insert(budget.services || []);
-    clearDraft();
-    setSaving(false);
-    navigate(`/budgets/${budgetId}`);
+    return { budget, clientId };
+  }
+
+  // ── Gerar PDF e SÓ ENTÃO gravar no histórico ──────────────────────
+  // Enquanto o PDF não é gerado com sucesso, nada é salvo no Supabase
+  // e o rascunho continua aberto e editável (qualquer etapa, qualquer item).
+  async function handleGeneratePDF(kind: 'client' | 'internal') {
+    if (!client.name.trim() || !client.email.trim() || !lgpdConsent) {
+      alert('Antes de gerar o PDF, preencha os dados do cliente e confirme o consentimento LGPD (etapa 1).');
+      setStep(1);
+      return;
+    }
+    if (servicesList.length + reelsList.length + equipmentList.length + professionalsList.length === 0) {
+      alert('Adicione ao menos um item ao orçamento antes de gerar o PDF.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { budget, clientId } = buildBudgetObject('Sent');
+
+      if (kind === 'client') {
+        await generateClientPDF(budget, settings);
+      } else {
+        await generateInternalPDF(budget, settings);
+      }
+
+      // PDF gerado com sucesso: agora sim grava no histórico e fecha o rascunho.
+      await supabase.from('clients').insert({ id: clientId, ...client, created_at: budget.created_at });
+      await supabase.from('budgets').insert(budget);
+      await supabase.from('budget_items').insert(budget.services || []);
+      clearDraft();
+      navigate(`/budgets/${budget.id}`);
+    } catch (err) {
+      console.error(err);
+      alert('Não foi possível gerar o PDF. Nada foi salvo no histórico — o orçamento continua aberto para você tentar novamente.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   // ── Limpar orçamento ──────────────────────────────────────────────
@@ -749,11 +786,37 @@ export function BudgetCreate() {
                   onRestoreEquipment={(priceId) => restoreBasePrice('equipment', priceId)}
                   onUpdateProfessional={(priceId, patch) => updateOverride('professionals', priceId, patch)}
                   onRestoreProfessional={(priceId) => restoreBasePrice('professionals', priceId)}
+                  onRemoveService={(priceId) => removeItem('services', priceId)}
+                  onRemoveReel={(priceId) => removeItem('reels', priceId)}
+                  onRemoveEquipment={(priceId) => removeItem('equipment', priceId)}
+                  onRemoveProfessional={(priceId) => removeItem('professionals', priceId)}
                 />
               )}
 
               {/* STEP 8 — PROPOSTA */}
-              {step === 8 && <ProposalStep onSave={saveBudget} saving={saving} />}
+              {step === 8 && (
+                <ProposalStep
+                  saving={saving}
+                  onGeneratePDF={handleGeneratePDF}
+                  financials={financials}
+                  servicesList={servicesList as (BudgetItem & { base_price: number })[]}
+                  reelsList={reelsList as (ReelItem & { base_price: number })[]}
+                  equipmentList={equipmentList as (EquipmentItem & { base_price: number })[]}
+                  professionalsList={professionalsList as (ProfessionalItem & { base_price: number })[]}
+                  onUpdateService={(priceId, patch) => updateOverride('services', priceId, patch)}
+                  onRestoreService={(priceId) => restoreBasePrice('services', priceId)}
+                  onRemoveService={(priceId) => removeItem('services', priceId)}
+                  onUpdateReel={(priceId, patch) => updateOverride('reels', priceId, patch)}
+                  onRestoreReel={(priceId) => restoreBasePrice('reels', priceId)}
+                  onRemoveReel={(priceId) => removeItem('reels', priceId)}
+                  onUpdateEquipment={(priceId, patch) => updateOverride('equipment', priceId, patch)}
+                  onRestoreEquipment={(priceId) => restoreBasePrice('equipment', priceId)}
+                  onRemoveEquipment={(priceId) => removeItem('equipment', priceId)}
+                  onUpdateProfessional={(priceId, patch) => updateOverride('professionals', priceId, patch)}
+                  onRestoreProfessional={(priceId) => restoreBasePrice('professionals', priceId)}
+                  onRemoveProfessional={(priceId) => removeItem('professionals', priceId)}
+                />
+              )}
 
             </AnimatePresence>
 
@@ -768,9 +831,9 @@ export function BudgetCreate() {
                   {t.continue} <ArrowRight size={16} />
                 </button>
               ) : (
-                <button onClick={() => saveBudget('Sent')} disabled={saving}
+                <button onClick={() => handleGeneratePDF('client')} disabled={saving}
                   className="inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-medium text-black transition hover:bg-white/90 disabled:opacity-30">
-                  {saving ? 'Salvando...' : t.finish} <Check size={16} />
+                  {saving ? 'Gerando PDF...' : t.finish} <Check size={16} />
                 </button>
               )}
             </div>
@@ -1057,10 +1120,10 @@ function SelectStep({
 function FinancialStep({
   financials,
   servicesList, reelsList, equipmentList, professionalsList,
-  onUpdateService, onRestoreService,
-  onUpdateReel, onRestoreReel,
-  onUpdateEquipment, onRestoreEquipment,
-  onUpdateProfessional, onRestoreProfessional,
+  onUpdateService, onRestoreService, onRemoveService,
+  onUpdateReel, onRestoreReel, onRemoveReel,
+  onUpdateEquipment, onRestoreEquipment, onRemoveEquipment,
+  onUpdateProfessional, onRestoreProfessional, onRemoveProfessional,
 }: {
   financials: ReturnType<typeof calcFinancials>;
   servicesList: (BudgetItem & { base_price: number })[];
@@ -1069,12 +1132,16 @@ function FinancialStep({
   professionalsList: (ProfessionalItem & { base_price: number })[];
   onUpdateService: (id: string, p: Partial<DraftItemOverride>) => void;
   onRestoreService: (id: string) => void;
+  onRemoveService: (id: string) => void;
   onUpdateReel: (id: string, p: Partial<DraftItemOverride>) => void;
   onRestoreReel: (id: string) => void;
+  onRemoveReel: (id: string) => void;
   onUpdateEquipment: (id: string, p: Partial<DraftItemOverride>) => void;
   onRestoreEquipment: (id: string) => void;
+  onRemoveEquipment: (id: string) => void;
   onUpdateProfessional: (id: string, p: Partial<DraftItemOverride>) => void;
   onRestoreProfessional: (id: string) => void;
+  onRemoveProfessional: (id: string) => void;
 }) {
   return (
     <StepPanel title={t.steps.financial} subtitle="Edite valores e quantidades diretamente. Recalculo automático instantâneo.">
@@ -1107,6 +1174,7 @@ function FinancialStep({
             }))}
             onUpdate={(id, patch) => onUpdateService(id, patch)}
             onRestore={(id) => onRestoreService(id)}
+            onRemove={(id) => onRemoveService(id)}
             qtyLabel="Qtd"
           />
         </div>
@@ -1126,6 +1194,7 @@ function FinancialStep({
             }))}
             onUpdate={(id, patch) => onUpdateReel(id, patch)}
             onRestore={(id) => onRestoreReel(id)}
+            onRemove={(id) => onRemoveReel(id)}
             qtyLabel="Qtd"
           />
         </div>
@@ -1145,6 +1214,7 @@ function FinancialStep({
             }))}
             onUpdate={(id, patch) => onUpdateEquipment(id, patch)}
             onRestore={(id) => onRestoreEquipment(id)}
+            onRemove={(id) => onRemoveEquipment(id)}
             qtyLabel="Diárias"
           />
         </div>
@@ -1164,6 +1234,7 @@ function FinancialStep({
             }))}
             onUpdate={(id, patch) => onUpdateProfessional(id, patch)}
             onRestore={(id) => onRestoreProfessional(id)}
+            onRemove={(id) => onRemoveProfessional(id)}
             qtyLabel="Diárias"
           />
         </div>
@@ -1190,12 +1261,13 @@ interface EditableRow {
 }
 
 function EditableItemTable({
-  title, items, onUpdate, onRestore, qtyLabel,
+  title, items, onUpdate, onRestore, onRemove, qtyLabel,
 }: {
   title: string;
   items: EditableRow[];
   onUpdate: (id: string, patch: Partial<DraftItemOverride>) => void;
   onRestore: (id: string) => void;
+  onRemove?: (id: string) => void;
   qtyLabel: string;
 }) {
   return (
@@ -1205,11 +1277,12 @@ function EditableItemTable({
         <p className="shrink-0 text-xs text-white/30">{items.length} {items.length === 1 ? 'item' : 'itens'}</p>
       </div>
       {/* Cabeçalho: aparece apenas em telas muito largas para não sobrepor textos */}
-      <div className="hidden 2xl:grid 2xl:grid-cols-[minmax(180px,1fr)_76px_128px_132px_106px] gap-4 bg-black/20 px-5 py-2 text-[10px] uppercase tracking-wider text-white/30">
+      <div className="hidden 2xl:grid 2xl:grid-cols-[minmax(180px,1fr)_76px_128px_132px_106px_40px] gap-4 bg-black/20 px-5 py-2 text-[10px] uppercase tracking-wider text-white/30">
         <span>Item</span>
         <span>{qtyLabel}</span>
         <span>Valor Unit.</span>
         <span>Total</span>
+        <span></span>
         <span></span>
       </div>
       {/* Linhas editáveis */}
@@ -1218,7 +1291,7 @@ function EditableItemTable({
         const total = item.qty * item.unit_price;
         return (
           <div key={item.id}
-            className={`grid grid-cols-1 gap-4 border-b border-white/5 px-5 py-4 last:border-0 2xl:grid-cols-[minmax(180px,1fr)_76px_128px_132px_106px] 2xl:items-center ${
+            className={`grid grid-cols-1 gap-4 border-b border-white/5 px-5 py-4 last:border-0 2xl:grid-cols-[minmax(180px,1fr)_76px_128px_132px_106px_40px] 2xl:items-center ${
               isCustom ? 'bg-yellow-500/5' : ''
             }`}
           >
@@ -1264,6 +1337,14 @@ function EditableItemTable({
               }`}>
               <RotateCcw size={12} /> Restaurar
             </button>
+            {/* Remover item */}
+            {onRemove && (
+              <button onClick={() => onRemove(item.id)}
+                title="Remover item deste orçamento"
+                className="inline-flex w-fit shrink-0 items-center gap-1 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400 transition hover:bg-red-500/20">
+                <Trash2 size={12} />
+              </button>
+            )}
           </div>
         );
       })}
@@ -1274,16 +1355,131 @@ function EditableItemTable({
 // ═══════════════════════════════════════════════════════════════════
 // Proposta
 // ═══════════════════════════════════════════════════════════════════
-function ProposalStep({ onSave, saving: _saving }: { onSave: (status: Budget['status']) => void; saving: boolean }) {
+function ProposalStep({
+  saving,
+  onGeneratePDF,
+  financials,
+  servicesList, reelsList, equipmentList, professionalsList,
+  onUpdateService, onRestoreService, onRemoveService,
+  onUpdateReel, onRestoreReel, onRemoveReel,
+  onUpdateEquipment, onRestoreEquipment, onRemoveEquipment,
+  onUpdateProfessional, onRestoreProfessional, onRemoveProfessional,
+}: {
+  saving: boolean;
+  onGeneratePDF: (kind: 'client' | 'internal') => void;
+  financials: ReturnType<typeof calcFinancials>;
+  servicesList: (BudgetItem & { base_price: number })[];
+  reelsList: (ReelItem & { base_price: number })[];
+  equipmentList: (EquipmentItem & { base_price: number })[];
+  professionalsList: (ProfessionalItem & { base_price: number })[];
+  onUpdateService: (id: string, p: Partial<DraftItemOverride>) => void;
+  onRestoreService: (id: string) => void;
+  onRemoveService: (id: string) => void;
+  onUpdateReel: (id: string, p: Partial<DraftItemOverride>) => void;
+  onRestoreReel: (id: string) => void;
+  onRemoveReel: (id: string) => void;
+  onUpdateEquipment: (id: string, p: Partial<DraftItemOverride>) => void;
+  onRestoreEquipment: (id: string) => void;
+  onRemoveEquipment: (id: string) => void;
+  onUpdateProfessional: (id: string, p: Partial<DraftItemOverride>) => void;
+  onRestoreProfessional: (id: string) => void;
+  onRemoveProfessional: (id: string) => void;
+}) {
+  const hasAnyItem =
+    servicesList.length + reelsList.length + equipmentList.length + professionalsList.length > 0;
+
   return (
-    <StepPanel title={t.steps.proposal} subtitle="Gere a proposta e o link online para o cliente.">
-      <Action label={t.saveDraft} onClick={() => onSave('Draft')} />
-      <Action label={t.generateSent} onClick={() => onSave('Sent')} primary />
-      <Action label="Gerar link online" onClick={() => onSave('Sent')} icon={Link2} />
-      <div className="sm:col-span-2 rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-sm leading-6 text-white/45">
+    <StepPanel title={t.steps.proposal} subtitle="Revise, edite ou remova qualquer item antes de gerar o PDF.">
+      {/* Aviso de comportamento: nada vai pro histórico até o PDF ser gerado */}
+      <div className="sm:col-span-2 rounded-2xl border border-accent/20 bg-accent/[0.05] p-5 text-sm leading-6 text-white/55">
         <Sparkles size={18} className="mb-3 text-accent" />
-        O link online mostra apenas cliente, projeto, escopo, entregáveis, cronograma, investimento final e condições de pagamento.
+        Este orçamento só é salvo no histórico quando você gerar o PDF. Até lá, pode editar valores,
+        quantidades e remover itens à vontade — inclusive aqui, nesta etapa — sem perder nada e sem
+        precisar refazer o orçamento do zero.
       </div>
+
+      {/* TOTAL GERAL */}
+      <div className="sm:col-span-2 rounded-3xl border border-accent/30 bg-accent/[0.06] p-8">
+        <p className="mb-2 text-xs uppercase tracking-[0.22em] text-accent">{t.finalPriceLabel}</p>
+        <p className="font-display text-5xl text-white md:text-7xl">
+          {financials.final_price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+        </p>
+        <div className="mt-8 grid gap-4 sm:grid-cols-3">
+          <FinMetric label="Subtotal" value={financials.subtotal} />
+          <FinMetric label={`Fee (${t.fee})`} value={financials.fee_value} />
+          <FinMetric label={`Impostos (${t.tax})`} value={financials.tax_value} />
+        </div>
+      </div>
+
+      {/* ITENS — editáveis e removíveis, sem sair desta etapa */}
+      {!hasAnyItem && (
+        <div className="sm:col-span-2 rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-sm text-white/40">
+          Nenhum item adicionado ainda. Volte às etapas de Serviços, Equipamentos ou Equipe pelo menu lateral para incluir itens.
+        </div>
+      )}
+      {servicesList.length > 0 && (
+        <div className="sm:col-span-2">
+          <EditableItemTable
+            title="Serviços"
+            items={servicesList.map((item) => ({
+              id: item.price_list_id || item.id, name: item.name, category: item.category,
+              qty: item.quantity, unit_price: item.unit_price, base_price: item.base_price, subtotal: item.subtotal,
+            }))}
+            onUpdate={onUpdateService} onRestore={onRestoreService} onRemove={onRemoveService} qtyLabel="Qtd"
+          />
+        </div>
+      )}
+      {reelsList.length > 0 && (
+        <div className="sm:col-span-2">
+          <EditableItemTable
+            title="Reels"
+            items={reelsList.map((item) => ({
+              id: item.id, name: item.name, category: 'Reels',
+              qty: item.quantity, unit_price: item.unit_price, base_price: item.base_price, subtotal: item.subtotal,
+            }))}
+            onUpdate={onUpdateReel} onRestore={onRestoreReel} onRemove={onRemoveReel} qtyLabel="Qtd"
+          />
+        </div>
+      )}
+      {equipmentList.length > 0 && (
+        <div className="sm:col-span-2">
+          <EditableItemTable
+            title="Equipamentos"
+            items={equipmentList.map((item) => ({
+              id: item.id, name: item.name, category: 'Equipamentos',
+              qty: item.days, unit_price: item.daily_rate, base_price: item.base_price, subtotal: item.subtotal,
+            }))}
+            onUpdate={onUpdateEquipment} onRestore={onRestoreEquipment} onRemove={onRemoveEquipment} qtyLabel="Diárias"
+          />
+        </div>
+      )}
+      {professionalsList.length > 0 && (
+        <div className="sm:col-span-2">
+          <EditableItemTable
+            title="Equipe"
+            items={professionalsList.map((item) => ({
+              id: item.id, name: item.name, category: 'Equipe',
+              qty: item.days, unit_price: item.daily_rate, base_price: item.base_price, subtotal: item.subtotal,
+            }))}
+            onUpdate={onUpdateProfessional} onRestore={onRestoreProfessional} onRemove={onRemoveProfessional} qtyLabel="Diárias"
+          />
+        </div>
+      )}
+
+      {/* AÇÕES FINAIS — só aqui o orçamento é fechado e salvo no histórico */}
+      <Action
+        label={saving ? 'Gerando PDF...' : 'Gerar PDF do Cliente'}
+        onClick={() => onGeneratePDF('client')}
+        primary
+        icon={Sparkles}
+        disabled={saving}
+      />
+      <Action
+        label={saving ? 'Gerando PDF...' : 'Gerar PDF Interno'}
+        onClick={() => onGeneratePDF('internal')}
+        icon={Link2}
+        disabled={saving}
+      />
     </StepPanel>
   );
 }
@@ -1419,12 +1615,12 @@ function FinMetric({ label, value }: { label: string; value: number }) {
   );
 }
 
-function Action({ label, onClick, primary, icon: Icon = Save }: {
-  label: string; onClick: () => void; primary?: boolean; icon?: React.ElementType;
+function Action({ label, onClick, primary, icon: Icon = Save, disabled }: {
+  label: string; onClick: () => void; primary?: boolean; icon?: React.ElementType; disabled?: boolean;
 }) {
   return (
-    <button onClick={onClick}
-      className={`flex min-w-0 items-center gap-3 rounded-2xl border p-5 text-left transition ${
+    <button onClick={onClick} disabled={disabled}
+      className={`flex min-w-0 items-center gap-3 rounded-2xl border p-5 text-left transition disabled:cursor-not-allowed disabled:opacity-40 ${
         primary ? 'border-white bg-white text-black' : 'border-white/10 bg-white/[0.03] text-white hover:border-white/25'
       }`}>
       <Icon size={18} className="shrink-0" />
