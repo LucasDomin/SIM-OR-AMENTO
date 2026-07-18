@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { formatCurrency, generateId, getSettings, supabase } from '../lib/supabase';
-import { calcFinancials, formatPercent, type PricedItem } from '../lib/calc';
+import { calcFinancials, calcItemPricing, formatPercent, type PricedItem } from '../lib/calc';
 import { generateClientPDF } from '../lib/generateClientPDF';
 import { generateInternalPDF } from '../lib/generateInternalPDF';
 import { t } from '../lib/i18n';
@@ -38,6 +38,7 @@ import type {
   ProfessionalItem,
   ProjectType,
   ReelItem,
+  ServiceCategory,
   Template,
 } from '../types';
 
@@ -92,6 +93,7 @@ export function BudgetCreate() {
   const [priceList, setPriceList] = useState<PriceListItem[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [itemModal, setItemModal] = useState<ItemModal | null>(null);
+  const [newItemModal, setNewItemModal] = useState<{ group: 'services' | 'equipment' | 'professionals' } | null>(null);
   const [variantModal, setVariantModal] = useState<{ price: PriceListItem } | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
@@ -189,6 +191,53 @@ export function BudgetCreate() {
       }));
     }
     setItemModal(null);
+  }
+
+  // ── Item personalizado (criado direto no orçamento) ──────────────
+  // Se addToGlobal=true, o item também é gravado na Tabela de Preços
+  // geral (fica disponível para orçamentos futuros). Caso contrário,
+  // existe apenas neste orçamento.
+  async function confirmNewItem(data: {
+    name: string;
+    category: PriceListItem['category'];
+    cost_base: number;
+    price_base: number;
+    qty: number;
+    addToGlobal: boolean;
+  }) {
+    if (!newItemModal) return;
+    const { group } = newItemModal;
+    const pricing = calcItemPricing(data.cost_base, settings.fee_percentage, settings.tax_percentage, data.price_base);
+    const newPriceItem: PriceListItem = {
+      id: generateId(),
+      category: data.category,
+      name: data.name.trim() || 'Item personalizado',
+      cost_base: data.cost_base,
+      price_base: data.price_base,
+      fee_percent: settings.fee_percentage,
+      tax_percent: settings.tax_percentage,
+      sale_price: pricing.sale_price,
+      cost_price: data.cost_base,
+      active: true,
+      updated_at: new Date().toISOString(),
+    };
+
+    // Disponibiliza o item imediatamente neste orçamento (via estado local),
+    // independente de ele também ir para a tabela geral ou não.
+    setPriceList((current) => [...current, newPriceItem]);
+    setDraft((prev) => ({
+      ...prev,
+      [group]: {
+        ...prev[group],
+        [newPriceItem.id]: makeOverride(newPriceItem, data.qty, newPriceItem.sale_price),
+      },
+    }));
+
+    if (data.addToGlobal) {
+      await supabase.from('price_list').insert(newPriceItem);
+    }
+
+    setNewItemModal(null);
   }
 
   // ── Remover item ─────────────────────────────────────────────────
@@ -715,6 +764,7 @@ export function BudgetCreate() {
                     selected={selectedServices}
                     onToggle={(price) => handleServiceClick(price)}
                     onEdit={(price) => openItemModal(price, 'services')}
+                    onAddCustom={() => setNewItemModal({ group: 'services' })}
                   />
                   {Object.keys(selectedReels).length > 0 && (
                     <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
@@ -754,6 +804,7 @@ export function BudgetCreate() {
                   selected={selectedEquipment}
                   onToggle={(price) => openItemModal(price, 'equipment')}
                   onEdit={(price) => openItemModal(price, 'equipment')}
+                  onAddCustom={() => setNewItemModal({ group: 'equipment' })}
                 />
               )}
 
@@ -767,6 +818,7 @@ export function BudgetCreate() {
                   selected={selectedProfessionals}
                   onToggle={(price) => openItemModal(price, 'professionals')}
                   onEdit={(price) => openItemModal(price, 'professionals')}
+                  onAddCustom={() => setNewItemModal({ group: 'professionals' })}
                 />
               )}
 
@@ -859,6 +911,15 @@ export function BudgetCreate() {
           group={itemModal.group}
           onConfirm={confirmItemModal}
           onCancel={() => setItemModal(null)}
+        />
+      )}
+
+      {/* Modal de item personalizado (não existe na tabela de preços) */}
+      {newItemModal && (
+        <NewCustomItemModal
+          group={newItemModal.group}
+          onConfirm={confirmNewItem}
+          onCancel={() => setNewItemModal(null)}
         />
       )}
 
@@ -1030,10 +1091,168 @@ function ItemConfigModal({
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// Modal de item PERSONALIZADO (não existe na tabela de preços)
+// ═══════════════════════════════════════════════════════════════════
+const CATEGORY_BY_GROUP: Record<'services' | 'equipment' | 'professionals', ServiceCategory | null> = {
+  services: null, // usuário escolhe entre SELECTABLE_CATEGORIES
+  equipment: 'Equipamentos',
+  professionals: 'Equipe',
+};
+
+function NewCustomItemModal({
+  group,
+  onConfirm,
+  onCancel,
+}: {
+  group: 'services' | 'equipment' | 'professionals';
+  onConfirm: (data: {
+    name: string;
+    category: ServiceCategory;
+    cost_base: number;
+    price_base: number;
+    qty: number;
+    addToGlobal: boolean;
+  }) => void;
+  onCancel: () => void;
+}) {
+  const fixedCategory = CATEGORY_BY_GROUP[group];
+  const [name, setName] = useState('');
+  const [category, setCategory] = useState<ServiceCategory>(fixedCategory ?? SELECTABLE_CATEGORIES[0] as ServiceCategory);
+  const [costBase, setCostBase] = useState(0);
+  const [priceBase, setPriceBase] = useState(0);
+  const [qty, setQty] = useState(1);
+  const [addToGlobal, setAddToGlobal] = useState(false);
+
+  const isEquipOrPro = group === 'equipment' || group === 'professionals';
+  const qtyLabel = isEquipOrPro ? 'Diárias / Dias' : 'Quantidade';
+  const canConfirm = name.trim().length > 0;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onCancel}>
+      <motion.div
+        initial={{ opacity: 0, y: 20, scale: 0.96 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        className="w-full max-w-md rounded-3xl border border-white/10 bg-[#131315] p-7 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase tracking-[0.3em] text-accent mb-1">Item personalizado</p>
+            <h3 className="font-display text-2xl text-white">Adicionar item</h3>
+            <p className="mt-1 text-sm text-white/40">Esse item não existe na tabela de preços — você define os valores agora.</p>
+          </div>
+          <button onClick={onCancel} className="shrink-0 rounded-lg p-2 text-white/40 hover:bg-white/10 hover:text-white"><X size={18} /></button>
+        </div>
+
+        <div className="space-y-4">
+          <label className="block">
+            <span className="mb-1.5 block text-xs uppercase tracking-[0.22em] text-white/35">Nome do item</span>
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ex.: Aluguel de estúdio"
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white focus:border-white/35"
+            />
+          </label>
+
+          {!fixedCategory && (
+            <label className="block">
+              <span className="mb-1.5 block text-xs uppercase tracking-[0.22em] text-white/35">Categoria</span>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value as ServiceCategory)}
+                className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white focus:border-white/35"
+              >
+                {SELECTABLE_CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat} className="bg-[#131315]">{cat}</option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="mb-1.5 block text-xs uppercase tracking-[0.22em] text-white/35">Custo base (R$)</span>
+              <input
+                type="number" min={0} value={costBase}
+                onChange={(e) => setCostBase(Math.max(0, Number(e.target.value)))}
+                className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white focus:border-white/35"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs uppercase tracking-[0.22em] text-white/35">Valor de venda (R$)</span>
+              <input
+                type="number" min={0} value={priceBase}
+                onChange={(e) => setPriceBase(Math.max(0, Number(e.target.value)))}
+                className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white focus:border-white/35"
+              />
+            </label>
+          </div>
+
+          <label className="block">
+            <span className="mb-1.5 block text-xs uppercase tracking-[0.22em] text-white/35">{qtyLabel}</span>
+            <div className="flex items-center gap-3">
+              <button onClick={() => setQty(Math.max(1, qty - 1))}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-black/30 text-white/60 hover:text-white">
+                <Minus size={16} />
+              </button>
+              <input type="number" value={qty} min={1}
+                onChange={(e) => setQty(Math.max(1, Number(e.target.value)))}
+                className="flex-1 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-center text-lg font-display font-semibold text-white focus:border-white/35" />
+              <button onClick={() => setQty(qty + 1)}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-black/30 text-white/60 hover:text-white">
+                <Plus size={16} />
+              </button>
+            </div>
+          </label>
+
+          {/* Onde salvar este item */}
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <p className="mb-3 text-xs uppercase tracking-[0.22em] text-white/35">Onde salvar este item?</p>
+            <div className="space-y-2">
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 p-3 transition hover:bg-white/[0.04]"
+                style={{ borderColor: !addToGlobal ? 'rgba(255,255,255,0.35)' : undefined }}>
+                <input type="radio" checked={!addToGlobal} onChange={() => setAddToGlobal(false)} className="mt-0.5" />
+                <span>
+                  <span className="block text-sm font-medium text-white">Somente neste orçamento</span>
+                  <span className="block text-xs text-white/40">Não altera a Tabela de Preços geral.</span>
+                </span>
+              </label>
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 p-3 transition hover:bg-white/[0.04]"
+                style={{ borderColor: addToGlobal ? 'rgba(255,255,255,0.35)' : undefined }}>
+                <input type="radio" checked={addToGlobal} onChange={() => setAddToGlobal(true)} className="mt-0.5" />
+                <span>
+                  <span className="block text-sm font-medium text-white">Também na Tabela de Preços geral</span>
+                  <span className="block text-xs text-white/40">Fica disponível para reaproveitar em outros orçamentos.</span>
+                </span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 flex gap-3">
+          <button onClick={onCancel}
+            className="flex-1 rounded-xl border border-white/10 py-3 text-sm text-white/60 transition hover:bg-white/5">
+            Cancelar
+          </button>
+          <button
+            disabled={!canConfirm}
+            onClick={() => onConfirm({ name, category: fixedCategory ?? category, cost_base: costBase, price_base: priceBase, qty, addToGlobal })}
+            className="flex-1 rounded-xl bg-white py-3 text-sm font-semibold text-black transition hover:bg-white/90 disabled:opacity-30">
+            Adicionar
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // Etapa de Seleção (clicar e selecionar)
 // ═══════════════════════════════════════════════════════════════════
 function SelectStep({
-  title, subtitle, categories, priceList, selected, onToggle, onEdit,
+  title, subtitle, categories, priceList, selected, onToggle, onEdit, onAddCustom,
 }: {
   title: string;
   subtitle: string;
@@ -1042,10 +1261,19 @@ function SelectStep({
   selected: Record<string, DraftItemOverride>;
   onToggle: (price: PriceListItem) => void;
   onEdit: (price: PriceListItem) => void;
+  onAddCustom?: () => void;
 }) {
   return (
     <StepPanel title={title} subtitle={subtitle}>
       <div className="sm:col-span-2 space-y-8">
+        {onAddCustom && (
+          <button
+            onClick={onAddCustom}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-white/20 bg-white/[0.02] py-4 text-sm font-medium text-white/60 transition hover:border-accent/40 hover:bg-accent/[0.05] hover:text-white"
+          >
+            <Plus size={16} /> Adicionar item que não está na lista
+          </button>
+        )}
         {categories.map((category) => {
           const items = priceList.filter((p) => p.category === category && p.active !== false);
           if (!items.length) return null;

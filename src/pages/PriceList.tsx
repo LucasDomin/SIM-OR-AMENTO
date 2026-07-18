@@ -25,6 +25,7 @@ export function PriceList() {
   const [settings, setSettings] = useState<SystemSettings>(getSettings());
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<ServiceCategory | 'all'>('all');
+  const [highlightId, setHighlightId] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -97,7 +98,7 @@ export function PriceList() {
     const newItem: PriceListItem = {
       id: generateId(),
       category,
-      name: 'Novo item',
+      name: '',
       cost_base: 0,
       price_base: 0,
       fee_percent: settings.fee_percentage,
@@ -109,7 +110,25 @@ export function PriceList() {
     };
     await supabase.from('price_list').insert(newItem);
     setItems((current) => [...current, newItem]);
+    // Garante que o item novo fique visível: limpa a busca e muda para a
+    // categoria dele (se um filtro diferente estiver ativo), depois
+    // rola a tela até ele e foca o campo de nome para digitar na hora.
+    setSearch('');
+    setActiveCategory(category);
+    setHighlightId(newItem.id);
   }
+
+  useEffect(() => {
+    if (!highlightId) return;
+    const el = document.getElementById(`price-row-${highlightId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const input = el.querySelector('input[type="text"]') as HTMLInputElement | null;
+      input?.focus();
+    }
+    const timer = setTimeout(() => setHighlightId(null), 2600);
+    return () => clearTimeout(timer);
+  }, [highlightId]);
 
   async function removeItem(id: string) {
     if (!confirm('Remover este item da tabela?')) return;
@@ -233,7 +252,7 @@ export function PriceList() {
 
           <div className="space-y-2">
             {filtered.map((item) => (
-              <PriceRow key={item.id} item={item} onUpdate={updatePrice} onRemove={removeItem} globalSettings={settings} />
+              <PriceRow key={item.id} item={item} onUpdate={updatePrice} onRemove={removeItem} globalSettings={settings} highlighted={highlightId === item.id} />
             ))}
             {filtered.length === 0 && (
               <p className="rounded-2xl border border-dashed border-white/10 px-5 py-8 text-center text-sm text-white/35">
@@ -263,11 +282,13 @@ function PriceRow({
   onUpdate,
   onRemove,
   globalSettings,
+  highlighted,
 }: {
   item: PriceListItem;
   onUpdate: (id: string, u: Partial<PriceListItem>) => void;
   onRemove: (id: string) => void;
   globalSettings: SystemSettings;
+  highlighted?: boolean;
 }) {
   const lucro = item.price_base - item.cost_base;
   const isCustomFee = item.custom_fee;
@@ -281,13 +302,19 @@ function PriceRow({
   };
 
   return (
-    <div className="grid gap-3 overflow-hidden rounded-2xl border border-white/10 bg-black/25 p-4 2xl:grid-cols-[minmax(0,1.1fr)_110px_110px_90px_90px_130px] 2xl:items-center">
+    <div
+      id={`price-row-${item.id}`}
+      className={`grid gap-3 overflow-hidden rounded-2xl border p-4 transition-colors duration-700 2xl:grid-cols-[minmax(0,1.1fr)_110px_110px_90px_90px_130px] 2xl:items-center ${
+        highlighted ? 'border-accent bg-accent/10' : 'border-white/10 bg-black/25'
+      }`}
+    >
       <div className="min-w-0">
         <input
           type="text"
           value={item.name}
           onChange={(e) => onUpdate(item.id, { name: e.target.value })}
-          className="w-full bg-transparent text-sm font-medium text-white focus:outline-none"
+          placeholder="Nome do item"
+          className="w-full bg-transparent text-sm font-medium text-white placeholder:text-white/25 focus:outline-none"
         />
         <p className="mt-1 text-xs text-white/35">{item.category}</p>
       </div>
