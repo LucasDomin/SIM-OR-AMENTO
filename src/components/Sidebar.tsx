@@ -15,6 +15,7 @@ import {
 import { Logo } from './Logo';
 import { useAuth } from '../contexts/AuthContext';
 import { t } from '../lib/i18n';
+import { clearDraft } from '../lib/draftStorage';
 
 const navItems = [
   { path: '/', label: t.dashboard, icon: LayoutDashboard },
@@ -31,6 +32,11 @@ export function Sidebar() {
   const { signOut } = useAuth();
 
   const handleNavigate = (path: string) => {
+    // "Novo Orçamento" sempre começa do zero — evita continuar sem querer
+    // um rascunho abandonado (inclusive de edição de outro orçamento salvo).
+    if (path === '/budgets/new') {
+      clearDraft();
+    }
     navigate(path);
     setMobileOpen(false);
   };

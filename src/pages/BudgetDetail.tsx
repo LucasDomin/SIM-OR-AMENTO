@@ -8,6 +8,7 @@ import {
   Download,
   FileText,
   Link2,
+  Pencil,
   Send,
   XCircle,
 } from 'lucide-react';
@@ -27,10 +28,18 @@ export function BudgetDetail() {
   const [budget, setBudget] = useState<Budget | null>(null);
   const [settings, setSettings] = useState<SystemSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
+  const [overrideInput, setOverrideInput] = useState('');
+  const [savingOverride, setSavingOverride] = useState(false);
 
   useEffect(() => {
     if (id) loadBudget();
   }, [id]);
+
+  useEffect(() => {
+    if (budget) {
+      setOverrideInput(String(budget.client_price_override ?? budget.final_price));
+    }
+  }, [budget?.id, budget?.client_price_override, budget?.final_price]);
 
   async function loadBudget() {
     const [{ data }, loadedSettings] = await Promise.all([
@@ -57,6 +66,32 @@ export function BudgetDetail() {
   function duplicateBudget() {
     if (!budget) return;
     navigate('/budgets/new', { state: { duplicate: budget } });
+  }
+
+  function editBudget() {
+    if (!budget) return;
+    navigate('/budgets/new', { state: { editBudget: budget } });
+  }
+
+  async function saveClientPriceOverride() {
+    if (!budget) return;
+    const value = Number(overrideInput.replace(',', '.'));
+    if (Number.isNaN(value) || value < 0) {
+      alert('Digite um valor válido.');
+      return;
+    }
+    setSavingOverride(true);
+    await supabase.from('budgets').update({ client_price_override: value }).eq('id', budget.id);
+    setSavingOverride(false);
+    loadBudget();
+  }
+
+  async function resetClientPriceOverride() {
+    if (!budget) return;
+    setSavingOverride(true);
+    await supabase.from('budgets').update({ client_price_override: null }).eq('id', budget.id);
+    setSavingOverride(false);
+    loadBudget();
   }
 
   function proposalUrl() {
@@ -140,6 +175,7 @@ export function BudgetDetail() {
                 <ActionButton onClick={() => updateStatus('Rejected')} icon={XCircle}>{t.reject}</ActionButton>
               </>
             )}
+            <ActionButton onClick={editBudget} icon={Pencil}>Editar</ActionButton>
             <ActionButton onClick={handleGenerateClientPDF} icon={FileText}>{t.pdfClient}</ActionButton>
             <ActionButton onClick={handleGenerateInternalPDF} icon={Download}>{t.pdfInternal}</ActionButton>
             <ActionButton onClick={duplicateBudget} icon={Copy}>{t.duplicate}</ActionButton>
@@ -158,6 +194,54 @@ export function BudgetDetail() {
             <Metric label={`Impostos (${t.tax})`} value={formatCurrency(budget.tax_value)} />
           </div>
         </div>
+
+        {/* VALOR PARA O CLIENTE — pode ser personalizado sem afetar custo/margem internos */}
+        <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-6">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="font-display text-xl text-white">Valor para o Cliente</h2>
+              <p className="mt-1 text-sm text-white/40">
+                É o que aparece no PDF do cliente e na proposta online. Alterar aqui não muda o custo, lucro ou margem que você acompanha internamente.
+              </p>
+            </div>
+            {budget.client_price_override != null && (
+              <span className="shrink-0 rounded-full bg-yellow-400/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-yellow-400">
+                Personalizado
+              </span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[200px] flex-1">
+              <label className="mb-1.5 block text-xs uppercase tracking-wider text-white/35">Valor mostrado ao cliente</label>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm text-white/40">R$</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={overrideInput}
+                  onChange={(e) => setOverrideInput(e.target.value)}
+                  className="w-full rounded-xl border border-white/10 bg-black/30 py-3 pl-10 pr-4 text-base text-white focus:border-white/35"
+                />
+              </div>
+            </div>
+            <button
+              onClick={saveClientPriceOverride}
+              disabled={savingOverride}
+              className="rounded-xl bg-white px-5 py-3 text-sm font-medium text-black transition hover:bg-white/90 disabled:opacity-50"
+            >
+              Salvar
+            </button>
+            {budget.client_price_override != null && (
+              <button
+                onClick={resetClientPriceOverride}
+                disabled={savingOverride}
+                className="rounded-xl border border-white/10 px-5 py-3 text-sm text-white/60 transition hover:bg-white/5 disabled:opacity-50"
+              >
+                Restaurar valor calculado ({formatCurrency(budget.final_price)})
+              </button>
+            )}
+          </div>
+        </section>
 
         {/* PROPOSTA - geração de documentos e link */}
         <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-6">

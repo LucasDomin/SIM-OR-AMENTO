@@ -28,6 +28,8 @@ import {
 export async function generateClientPDF(rawBudget: Budget, settings: SystemSettings) {
   // Recalcula todos os totais a partir dos valores aplicados
   const budget = recalcBudgetSnapshot(rawBudget, settings) as Budget;
+  // Valor exibido ao cliente: usa o override manual quando definido, senão o calculado.
+  const clientTotal = rawBudget.client_price_override ?? budget.final_price;
 
   const { default: jsPDF } = await import('jspdf');
   const doc = new jsPDF();
@@ -195,7 +197,7 @@ export async function generateClientPDF(rawBudget: Budget, settings: SystemSetti
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(20);
   setColor(doc, { r: 255, g: 255, b: 255 });
-  doc.text(formatCurrency(budget.final_price), M + 12, y + 23);
+  doc.text(formatCurrency(clientTotal), M + 12, y + 23);
 
   y += boxH + 8;
 

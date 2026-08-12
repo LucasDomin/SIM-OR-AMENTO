@@ -88,11 +88,86 @@ create table if not exists budgets (
   final_price numeric not null default 0,
   profit numeric not null default 0,
   margin numeric not null default 0,
-  material_bruto_value numeric not null default 0
+  material_bruto_value numeric not null default 0,
+  -- Valor final exibido para o cliente (PDF do cliente e proposta pública).
+  -- Quando nulo, usa o final_price calculado a partir dos itens. Quando
+  -- preenchido, sobrescreve SÓ o que o cliente vê — custo, lucro e margem
+  -- internos continuam calculados a partir dos itens normalmente.
+  client_price_override numeric
 );
 
 create index if not exists budgets_created_at_idx on budgets (created_at desc);
 create index if not exists budgets_online_slug_idx on budgets (online_slug);
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- Migração idempotente: "create table if not exists" não adiciona colunas
+-- que faltam em uma tabela que já existe (ex.: se a tabela foi criada por
+-- uma versão anterior deste script). Os "add column if not exists" abaixo
+-- garantem que rodar este arquivo de novo sempre deixa o schema completo,
+-- não importa o estado atual do banco.
+-- ─────────────────────────────────────────────────────────────────────────
+
+alter table clients add column if not exists name text;
+alter table clients add column if not exists company text;
+alter table clients add column if not exists whatsapp text;
+alter table clients add column if not exists email text;
+alter table clients add column if not exists created_at timestamptz not null default now();
+
+alter table system_settings add column if not exists fee_percentage numeric not null default 15;
+alter table system_settings add column if not exists tax_percentage numeric not null default 7;
+alter table system_settings add column if not exists proposal_validity_days integer not null default 30;
+alter table system_settings add column if not exists updated_at timestamptz not null default now();
+
+alter table price_list add column if not exists category text;
+alter table price_list add column if not exists name text;
+alter table price_list add column if not exists cost_base numeric not null default 0;
+alter table price_list add column if not exists price_base numeric not null default 0;
+alter table price_list add column if not exists fee_percent numeric not null default 15;
+alter table price_list add column if not exists tax_percent numeric not null default 7;
+alter table price_list add column if not exists sale_price numeric not null default 0;
+alter table price_list add column if not exists cost_price numeric not null default 0;
+alter table price_list add column if not exists custom_fee boolean not null default false;
+alter table price_list add column if not exists custom_tax boolean not null default false;
+alter table price_list add column if not exists active boolean not null default true;
+alter table price_list add column if not exists updated_at timestamptz not null default now();
+
+alter table templates add column if not exists name text;
+alter table templates add column if not exists description text;
+alter table templates add column if not exists project_type text;
+alter table templates add column if not exists production jsonb not null default '{}'::jsonb;
+alter table templates add column if not exists service_names text[] not null default '{}';
+alter table templates add column if not exists reel_names text[] not null default '{}';
+alter table templates add column if not exists equipment_names text[] not null default '{}';
+alter table templates add column if not exists professional_names text[] not null default '{}';
+alter table templates add column if not exists created_at timestamptz not null default now();
+
+alter table budgets add column if not exists client_id uuid references clients(id) on delete set null;
+alter table budgets add column if not exists client_name text;
+alter table budgets add column if not exists client_company text;
+alter table budgets add column if not exists client_whatsapp text;
+alter table budgets add column if not exists client_email text;
+alter table budgets add column if not exists project_name text;
+alter table budgets add column if not exists project_type text;
+alter table budgets add column if not exists project_description text;
+alter table budgets add column if not exists production jsonb not null default '{}'::jsonb;
+alter table budgets add column if not exists services jsonb not null default '[]'::jsonb;
+alter table budgets add column if not exists reels jsonb not null default '[]'::jsonb;
+alter table budgets add column if not exists equipment jsonb not null default '[]'::jsonb;
+alter table budgets add column if not exists professionals jsonb not null default '[]'::jsonb;
+alter table budgets add column if not exists status text not null default 'Draft';
+alter table budgets add column if not exists created_at timestamptz not null default now();
+alter table budgets add column if not exists updated_at timestamptz not null default now();
+alter table budgets add column if not exists expires_at timestamptz;
+alter table budgets add column if not exists proposal_date timestamptz not null default now();
+alter table budgets add column if not exists online_slug text;
+alter table budgets add column if not exists cost_total numeric not null default 0;
+alter table budgets add column if not exists fee_value numeric not null default 0;
+alter table budgets add column if not exists tax_value numeric not null default 0;
+alter table budgets add column if not exists final_price numeric not null default 0;
+alter table budgets add column if not exists profit numeric not null default 0;
+alter table budgets add column if not exists margin numeric not null default 0;
+alter table budgets add column if not exists material_bruto_value numeric not null default 0;
+alter table budgets add column if not exists client_price_override numeric;
 
 -- ─────────────────────────────────────────────────────────────────────────
 -- updated_at automático
@@ -181,7 +256,7 @@ as $$
     'proposal_date', proposal_date,
     'expires_at', expires_at,
     'online_slug', online_slug,
-    'final_price', final_price,
+    'final_price', coalesce(client_price_override, final_price),
     'status', status,
     'services', (
       select coalesce(jsonb_agg(jsonb_build_object('name', item->>'name')), '[]'::jsonb)

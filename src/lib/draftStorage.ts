@@ -28,6 +28,9 @@ export interface BudgetDraft {
   equipment: Record<string, DraftItemOverride>;
   professionals: Record<string, DraftItemOverride>;
   savedAt: string;
+  // Presente quando o rascunho é a edição de um orçamento já salvo — ao
+  // gerar o PDF, atualiza essa linha em vez de criar um orçamento novo.
+  editingSnapshot?: { id: string; client_id: string; online_slug: string; created_at: string; client_price_override: number | null } | null;
 }
 
 export const EMPTY_DRAFT: BudgetDraft = {
@@ -47,6 +50,7 @@ export const EMPTY_DRAFT: BudgetDraft = {
   equipment: {},
   professionals: {},
   savedAt: '',
+  editingSnapshot: null,
 };
 
 export function loadDraft(): BudgetDraft {

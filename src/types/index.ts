@@ -169,6 +169,9 @@ export interface Budget {
   profit: number;
   margin: number;
   material_bruto_value: number;
+  // Valor final exibido ao cliente (PDF do cliente + proposta pública).
+  // null/undefined = usa final_price calculado. Não afeta custo/lucro/margem internos.
+  client_price_override?: number | null;
   // campos legados (não usados pela nova lógica, mas mantidos para compatibilidade)
   items?: BudgetItem[];
   deliverables?: {

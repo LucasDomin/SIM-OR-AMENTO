@@ -134,12 +134,14 @@ export function BudgetCreate() {
       setTemplates((tpls.data || []) as Template[]);
       setSettings(((settingsResult.data || []) as SystemSettings[])[0] || DEFAULT_SETTINGS);
 
-      const state = location.state as { template?: Template; duplicate?: Budget; clearDraft?: boolean } | null;
+      const state = location.state as { template?: Template; duplicate?: Budget; editBudget?: Budget; clearDraft?: boolean } | null;
       if (state?.clearDraft) {
         clearDraft();
         setDraftRaw({ ...EMPTY_DRAFT });
       } else if (state?.template) {
         applyTemplate(state.template, priceItems);
+      } else if (state?.editBudget) {
+        applyEdit(state.editBudget, priceItems);
       } else if (state?.duplicate) {
         applyDuplicate(state.duplicate, priceItems);
       }
@@ -334,6 +336,9 @@ export function BudgetCreate() {
       reels,
       equipment,
       professionals,
+      // Aplicar um modelo sempre monta um orçamento novo — nunca continua
+      // editando um orçamento salvo de uma sessão anterior abandonada.
+      editingSnapshot: null,
     }));
   }
 
@@ -393,6 +398,94 @@ export function BudgetCreate() {
       equipment,
       professionals,
       savedAt: '',
+    });
+  }
+
+  // ── Reabrir um orçamento salvo para edição ─────────────────────────
+  // Ao contrário de "duplicar", mantém a identidade do orçamento (id,
+  // cliente, slug, data de criação) para que salvar de novo atualize a
+  // mesma linha em vez de criar uma nova. Itens que não existem mais na
+  // tabela de preços (ex.: personalizados que não foram salvos globalmente)
+  // são recriados localmente para não sumir da edição.
+  function applyEdit(budget: Budget, prices = priceList) {
+    const extraPrices: PriceListItem[] = [];
+    const findOrCreate = (
+      name: string,
+      category: ServiceCategory,
+      unitPrice: number,
+      costBase?: number,
+      priceBase?: number,
+      feePercent?: number,
+      taxPercent?: number,
+    ) => {
+      const existing = prices.find((p) => p.name === name) || extraPrices.find((p) => p.name === name);
+      if (existing) return existing;
+      const synthetic: PriceListItem = {
+        id: generateId(),
+        category,
+        name,
+        cost_base: costBase ?? unitPrice,
+        price_base: priceBase ?? unitPrice,
+        fee_percent: feePercent ?? settings.fee_percentage,
+        tax_percent: taxPercent ?? settings.tax_percentage,
+        sale_price: unitPrice,
+        cost_price: costBase ?? unitPrice,
+        active: true,
+        updated_at: new Date().toISOString(),
+      };
+      extraPrices.push(synthetic);
+      return synthetic;
+    };
+
+    const services: Record<string, DraftItemOverride> = {};
+    budget.services.forEach((item) => {
+      const p = findOrCreate(item.name, item.category, item.unit_price, item.cost_base, item.price_base, item.fee_percent, item.tax_percent);
+      services[p.id] = { qty: item.quantity, applied_price: item.unit_price, base_price: p.sale_price };
+    });
+    const reels: Record<string, DraftItemOverride> = {};
+    budget.reels.forEach((item) => {
+      const p = findOrCreate(item.name, 'Reels', item.unit_price, item.cost_base, item.price_base, item.fee_percent, item.tax_percent);
+      reels[p.id] = { qty: item.quantity, applied_price: item.unit_price, base_price: p.sale_price };
+    });
+    const equipment: Record<string, DraftItemOverride> = {};
+    budget.equipment.forEach((item) => {
+      const p = findOrCreate(item.name, 'Equipamentos', item.daily_rate, item.cost_base, item.price_base, item.fee_percent, item.tax_percent);
+      equipment[p.id] = { qty: item.days, applied_price: item.daily_rate, base_price: p.sale_price };
+    });
+    const professionals: Record<string, DraftItemOverride> = {};
+    budget.professionals.forEach((item) => {
+      const p = findOrCreate(item.name, 'Equipe', item.daily_rate, item.cost_base, item.price_base, item.fee_percent, item.tax_percent);
+      professionals[p.id] = { qty: item.days, applied_price: item.daily_rate, base_price: p.sale_price };
+    });
+
+    if (extraPrices.length) {
+      setPriceList((current) => [...current, ...extraPrices]);
+    }
+
+    setDraftRaw({
+      client: { name: budget.client_name, company: budget.client_company, whatsapp: budget.client_whatsapp, email: budget.client_email },
+      lgpdConsent: true,
+      project: { name: budget.project_name, type: budget.project_type, description: budget.project_description },
+      production: {
+        shooting_days: budget.production.shooting_days,
+        city: budget.production.city,
+        need_transportation: budget.production.need_transportation,
+        need_lodging: budget.production.need_lodging,
+        start_date: budget.production.start_date || '',
+        delivery_days: budget.production.delivery_days,
+      },
+      services,
+      reels,
+      equipment,
+      professionals,
+      savedAt: '',
+      editingSnapshot: {
+        id: budget.id,
+        client_id: budget.client_id,
+        online_slug: budget.online_slug,
+        created_at: budget.created_at,
+        client_price_override: budget.client_price_override ?? null,
+      },
     });
   }
 
@@ -525,8 +618,9 @@ export function BudgetCreate() {
     const now = new Date();
     const expires = new Date(now);
     expires.setDate(expires.getDate() + settings.proposal_validity_days);
-    const budgetId = generateId();
-    const clientId = generateId();
+    const editing = draft.editingSnapshot;
+    const budgetId = editing?.id ?? generateId();
+    const clientId = editing?.client_id ?? generateId();
 
     const budget: Budget = {
       id: budgetId,
@@ -550,12 +644,12 @@ export function BudgetCreate() {
       equipment: equipmentList.map((item) => ({ ...item, id: generateId() })),
       professionals: professionalsList.map((item) => ({ ...item, id: generateId() })),
       status,
-      created_at: now.toISOString(),
+      created_at: editing?.created_at ?? now.toISOString(),
       updated_at: now.toISOString(),
       expires_at: expires.toISOString(),
       expiration_date: expires.toISOString(),
       proposal_date: now.toISOString(),
-      online_slug: `${project.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${budgetId.slice(0, 6)}`,
+      online_slug: editing?.online_slug ?? `${project.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${budgetId.slice(0, 6)}`,
       cost_total: financials.cost_total,
       fee_value: financials.fee_value,
       tax_value: financials.tax_value,
@@ -563,6 +657,7 @@ export function BudgetCreate() {
       profit: financials.profit,
       margin: financials.margin,
       material_bruto_value: financials.material_bruto_value,
+      client_price_override: editing?.client_price_override ?? null,
       type: project.type as ProjectType,
       budget_date: now.toISOString(),
       client_phone: client.whatsapp,
@@ -596,9 +691,15 @@ export function BudgetCreate() {
       }
 
       // PDF gerado com sucesso: agora sim grava no histórico e fecha o rascunho.
-      await supabase.from('clients').insert({ id: clientId, ...client, created_at: budget.created_at });
-      const { error: budgetError } = await supabase.from('budgets').insert(budgetToRow(budget));
-      if (budgetError) throw budgetError;
+      if (draft.editingSnapshot) {
+        await supabase.from('clients').update({ ...client }).eq('id', clientId);
+        const { error: budgetError } = await supabase.from('budgets').update(budgetToRow(budget)).eq('id', budget.id);
+        if (budgetError) throw budgetError;
+      } else {
+        await supabase.from('clients').insert({ id: clientId, ...client, created_at: budget.created_at });
+        const { error: budgetError } = await supabase.from('budgets').insert(budgetToRow(budget));
+        if (budgetError) throw budgetError;
+      }
       clearDraft();
       navigate(`/budgets/${budget.id}`);
     } catch (err) {
@@ -631,10 +732,12 @@ export function BudgetCreate() {
           <div className="min-w-0">
             <p className="mb-3 text-xs uppercase tracking-[0.34em] text-accent">SIM Budget System</p>
             <h1 className="font-display text-3xl font-semibold tracking-tight text-white break-words md:text-5xl">
-              {t.newBudget}
+              {draft.editingSnapshot ? 'Editar Orçamento' : t.newBudget}
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-white/45">
-              Clique nos serviços para adicionar. Valores são personalizáveis por orçamento sem alterar a tabela global.
+              {draft.editingSnapshot
+                ? 'Você está editando um orçamento já salvo. Ao gerar o PDF novamente, as alterações substituem a versão anterior.'
+                : 'Clique nos serviços para adicionar. Valores são personalizáveis por orçamento sem alterar a tabela global.'}
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-3">

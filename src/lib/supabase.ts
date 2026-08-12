@@ -55,6 +55,7 @@ export function budgetToRow(budget: Budget) {
     profit: budget.profit,
     margin: budget.margin,
     material_bruto_value: budget.material_bruto_value,
+    client_price_override: budget.client_price_override ?? null,
   };
 }
 

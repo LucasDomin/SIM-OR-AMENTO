@@ -15,6 +15,7 @@ import { Layout } from '../components/Layout';
 import { StatCard } from '../components/StatCard';
 import { BudgetStatusBadge } from '../components/BudgetStatusBadge';
 import { mapBudgetRow, supabase } from '../lib/supabase';
+import { clearDraft } from '../lib/draftStorage';
 import { formatCurrency, formatDate } from '../lib/utils';
 import { t } from '../lib/i18n';
 import type { Budget, DashboardStats } from '../types';
@@ -121,7 +122,7 @@ export function Dashboard() {
               return (
                 <button
                   key={action.label}
-                  onClick={() => navigate(action.path)}
+                  onClick={() => { if (action.path === '/budgets/new') clearDraft(); navigate(action.path); }}
                   className={`flex items-center gap-3 px-5 py-4 rounded-xl text-sm font-medium transition-all duration-200 hover:scale-[1.02] ${action.color}`}
                 >
                   <Icon size={18} />
@@ -162,7 +163,7 @@ export function Dashboard() {
               <AlertCircle size={24} className="text-white/20 mx-auto mb-3" />
               <p className="text-sm text-white/40">{t.noBudgetsYet}</p>
               <button
-                onClick={() => navigate('/budgets/new')}
+                onClick={() => { clearDraft(); navigate('/budgets/new'); }}
                 className="mt-4 text-sm text-white/60 hover:text-white transition-colors"
               >
                 {t.createFirst}
