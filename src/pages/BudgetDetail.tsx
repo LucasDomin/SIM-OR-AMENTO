@@ -14,17 +14,18 @@ import {
 import { BudgetStatusBadge } from '../components/BudgetStatusBadge';
 import { Layout } from '../components/Layout';
 import { t } from '../lib/i18n';
-import { formatCurrency, getSettings, supabase } from '../lib/supabase';
-import { formatDate } from '../lib/utils';
+import { DEFAULT_SETTINGS, fetchSettings, mapBudgetRow, supabase } from '../lib/supabase';
+import { formatDate, formatCurrency } from '../lib/utils';
 import { formatPercent, recalcBudgetSnapshot } from '../lib/calc';
 import { generateClientPDF } from '../lib/generateClientPDF';
 import { generateInternalPDF } from '../lib/generateInternalPDF';
-import type { Budget } from '../types';
+import type { Budget, SystemSettings } from '../types';
 
 export function BudgetDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [budget, setBudget] = useState<Budget | null>(null);
+  const [settings, setSettings] = useState<SystemSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -32,11 +33,15 @@ export function BudgetDetail() {
   }, [id]);
 
   async function loadBudget() {
-    const { data } = await supabase.from('budgets').select().eq('id', id || '').single();
+    const [{ data }, loadedSettings] = await Promise.all([
+      supabase.from('budgets').select().eq('id', id || '').single(),
+      fetchSettings(),
+    ]);
+    setSettings(loadedSettings);
     if (data) {
       // Recalcula a partir dos valores aplicados para garantir que a tela e o PDF
       // sejam sempre idênticos (sem cache antigo / valores desatualizados).
-      setBudget(recalcBudgetSnapshot(data as Budget, getSettings()) as Budget);
+      setBudget(recalcBudgetSnapshot(mapBudgetRow(data), loadedSettings) as Budget);
     } else {
       setBudget(null);
     }
@@ -70,12 +75,12 @@ export function BudgetDetail() {
 
   async function handleGenerateClientPDF() {
     if (!budget) return;
-    await generateClientPDF(budget, getSettings());
+    await generateClientPDF(budget, settings);
   }
 
   async function handleGenerateInternalPDF() {
     if (!budget) return;
-    await generateInternalPDF(budget, getSettings());
+    await generateInternalPDF(budget, settings);
   }
 
   if (loading) {

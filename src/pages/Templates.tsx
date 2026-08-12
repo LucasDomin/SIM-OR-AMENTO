@@ -37,8 +37,8 @@ export function Templates() {
 
   async function loadTemplates() {
     const [templateResult, priceResult] = await Promise.all([
-      supabase.from('templates').select().data(),
-      supabase.from('price_list').select().data(),
+      supabase.from('templates').select(),
+      supabase.from('price_list').select(),
     ]);
     setTemplates((templateResult.data || []) as Template[]);
     setPriceList((priceResult.data || []) as PriceListItem[]);

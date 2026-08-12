@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useParams } from 'react-router-dom';
 import { Logo } from '../components/Logo';
-import { formatCurrency, supabase } from '../lib/supabase';
-import { formatDate, formatDateFull } from '../lib/utils';
+import { supabase } from '../lib/supabase';
+import { formatCurrency, formatDate, formatDateFull } from '../lib/utils';
 import { t } from '../lib/i18n';
 import type { Budget } from '../types';
 
@@ -20,9 +20,10 @@ export function ProposalPublic() {
   }, [slug]);
 
   async function load() {
-    // Audit-fix: secure, direct lookup using .eq().single() to prevent leak of all database records to the client
-    const { data } = await supabase.from('budgets').select().eq('online_slug', slug || '').single();
-    setBudget(data as Budget | null);
+    // Proposta pública: passa por uma função RPC (security definer) que expõe
+    // só os campos necessários para o cliente ver, sem custo/lucro/margem.
+    const { data } = await supabase.rpc('get_public_proposal', { p_slug: slug || '' });
+    setBudget((data as Budget | null) || null);
     setLoading(false);
   }
 

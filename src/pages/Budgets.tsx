@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { BudgetStatusBadge } from '../components/BudgetStatusBadge';
-import { supabase } from '../lib/supabase';
+import { mapBudgetRow, supabase } from '../lib/supabase';
 import { formatCurrency, formatDate } from '../lib/utils';
 import { t } from '../lib/i18n';
 import { clearDraft } from '../lib/draftStorage';
@@ -30,8 +30,8 @@ export function Budgets() {
   }, []);
 
   async function loadBudgets() {
-    const result = await supabase.from('budgets').select().order('created_at', { ascending: false }).data();
-    setBudgets((result.data || []) as Budget[]);
+    const result = await supabase.from('budgets').select().order('created_at', { ascending: false });
+    setBudgets((result.data || []).map(mapBudgetRow));
     setLoading(false);
   }
 

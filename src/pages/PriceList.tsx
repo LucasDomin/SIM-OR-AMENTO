@@ -3,7 +3,8 @@ import { motion } from 'framer-motion';
 import { Plus, RotateCcw, Save, Search, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { Layout } from '../components/Layout';
 import { t } from '../lib/i18n';
-import { formatCurrency, generateId, getSettings, supabase } from '../lib/supabase';
+import { DEFAULT_SETTINGS, supabase } from '../lib/supabase';
+import { formatCurrency, generateId } from '../lib/utils';
 import { calcItemPricing } from '../lib/calc';
 import type { PriceListItem, ServiceCategory, SystemSettings } from '../types';
 
@@ -22,7 +23,7 @@ const CATEGORIES: ServiceCategory[] = [
 
 export function PriceList() {
   const [items, setItems] = useState<PriceListItem[]>([]);
-  const [settings, setSettings] = useState<SystemSettings>(getSettings());
+  const [settings, setSettings] = useState<SystemSettings>(DEFAULT_SETTINGS);
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<ServiceCategory | 'all'>('all');
   const [highlightId, setHighlightId] = useState<string | null>(null);
@@ -30,11 +31,11 @@ export function PriceList() {
   useEffect(() => {
     async function load() {
       const [priceResult, settingsResult] = await Promise.all([
-        supabase.from('price_list').select().data(),
-        supabase.from('system_settings').select().data(),
+        supabase.from('price_list').select(),
+        supabase.from('system_settings').select(),
       ]);
       setItems((priceResult.data || []) as PriceListItem[]);
-      setSettings(((settingsResult.data || []) as SystemSettings[])[0] || getSettings());
+      setSettings(((settingsResult.data || []) as SystemSettings[])[0] || DEFAULT_SETTINGS);
     }
     load();
   }, []);

@@ -29,7 +29,7 @@ export function formatCurrency(value: number): string {
 }
 
 export function generateId(): string {
-  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  return crypto.randomUUID();
 }
 
 export function addDays(date: Date, days: number): Date {

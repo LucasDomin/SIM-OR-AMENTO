@@ -17,7 +17,8 @@ import {
   X,
 } from 'lucide-react';
 import { Layout } from '../components/Layout';
-import { formatCurrency, generateId, getSettings, supabase } from '../lib/supabase';
+import { budgetToRow, DEFAULT_SETTINGS, supabase } from '../lib/supabase';
+import { formatCurrency, generateId } from '../lib/utils';
 import { calcFinancials, calcItemPricing, formatPercent, type PricedItem } from '../lib/calc';
 import { generateClientPDF } from '../lib/generateClientPDF';
 import { generateInternalPDF } from '../lib/generateInternalPDF';
@@ -39,6 +40,7 @@ import type {
   ProjectType,
   ReelItem,
   ServiceCategory,
+  SystemSettings,
   Template,
 } from '../types';
 
@@ -79,7 +81,7 @@ interface ItemModal {
 export function BudgetCreate() {
   const navigate = useNavigate();
   const location = useLocation();
-  const settings = useMemo(() => getSettings(), []);
+  const [settings, setSettings] = useState<SystemSettings>(DEFAULT_SETTINGS);
 
   // ── Estado: draft carregado do localStorage ──────────────────────
   const [draft, setDraftRaw] = useState<BudgetDraft>(() => {
@@ -122,13 +124,15 @@ export function BudgetCreate() {
   // ── Carregamento inicial ──────────────────────────────────────────
   useEffect(() => {
     async function load() {
-      const [prices, tpls] = await Promise.all([
-        supabase.from('price_list').select().data(),
-        supabase.from('templates').select().data(),
+      const [prices, tpls, settingsResult] = await Promise.all([
+        supabase.from('price_list').select(),
+        supabase.from('templates').select(),
+        supabase.from('system_settings').select().limit(1),
       ]);
       const priceItems = (prices.data || []) as PriceListItem[];
       setPriceList(priceItems);
       setTemplates((tpls.data || []) as Template[]);
+      setSettings(((settingsResult.data || []) as SystemSettings[])[0] || DEFAULT_SETTINGS);
 
       const state = location.state as { template?: Template; duplicate?: Budget; clearDraft?: boolean } | null;
       if (state?.clearDraft) {
@@ -593,8 +597,8 @@ export function BudgetCreate() {
 
       // PDF gerado com sucesso: agora sim grava no histórico e fecha o rascunho.
       await supabase.from('clients').insert({ id: clientId, ...client, created_at: budget.created_at });
-      await supabase.from('budgets').insert(budget);
-      await supabase.from('budget_items').insert(budget.services || []);
+      const { error: budgetError } = await supabase.from('budgets').insert(budgetToRow(budget));
+      if (budgetError) throw budgetError;
       clearDraft();
       navigate(`/budgets/${budget.id}`);
     } catch (err) {
@@ -867,6 +871,16 @@ export function BudgetCreate() {
                   onUpdateProfessional={(priceId, patch) => updateOverride('professionals', priceId, patch)}
                   onRestoreProfessional={(priceId) => restoreBasePrice('professionals', priceId)}
                   onRemoveProfessional={(priceId) => removeItem('professionals', priceId)}
+                  priceList={priceList}
+                  selectedServices={selectedServices}
+                  selectedEquipment={selectedEquipment}
+                  selectedProfessionals={selectedProfessionals}
+                  onServiceClick={handleServiceClick}
+                  onEquipmentClick={(price) => openItemModal(price, 'equipment')}
+                  onProfessionalClick={(price) => openItemModal(price, 'professionals')}
+                  onAddCustomService={() => setNewItemModal({ group: 'services' })}
+                  onAddCustomEquipment={() => setNewItemModal({ group: 'equipment' })}
+                  onAddCustomProfessional={() => setNewItemModal({ group: 'professionals' })}
                 />
               )}
 
@@ -1265,6 +1279,31 @@ function SelectStep({
 }) {
   return (
     <StepPanel title={title} subtitle={subtitle}>
+      <ItemPickerGrid
+        categories={categories}
+        priceList={priceList}
+        selected={selected}
+        onToggle={onToggle}
+        onEdit={onEdit}
+        onAddCustom={onAddCustom}
+      />
+    </StepPanel>
+  );
+}
+
+// Grade de itens clicáveis (reaproveitada pelo SelectStep de cada etapa e
+// pelo painel "Adicionar mais itens" da etapa de Proposta).
+function ItemPickerGrid({
+  categories, priceList, selected, onToggle, onEdit, onAddCustom,
+}: {
+  categories: string[];
+  priceList: PriceListItem[];
+  selected: Record<string, DraftItemOverride>;
+  onToggle: (price: PriceListItem) => void;
+  onEdit: (price: PriceListItem) => void;
+  onAddCustom?: () => void;
+}) {
+  return (
       <div className="sm:col-span-2 space-y-8">
         {onAddCustom && (
           <button
@@ -1280,7 +1319,7 @@ function SelectStep({
           return (
             <section key={category}>
               <h4 className="mb-3 text-xs uppercase tracking-[0.28em] text-white/30">{category}</h4>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]">
                 {items.map((price) => {
                   const ov = selected[price.id];
                   const isSelected = !!ov;
@@ -1338,7 +1377,6 @@ function SelectStep({
           );
         })}
       </div>
-    </StepPanel>
   );
 }
 
@@ -1592,6 +1630,9 @@ function ProposalStep({
   onUpdateReel, onRestoreReel, onRemoveReel,
   onUpdateEquipment, onRestoreEquipment, onRemoveEquipment,
   onUpdateProfessional, onRestoreProfessional, onRemoveProfessional,
+  priceList, selectedServices, selectedEquipment, selectedProfessionals,
+  onServiceClick, onEquipmentClick, onProfessionalClick,
+  onAddCustomService, onAddCustomEquipment, onAddCustomProfessional,
 }: {
   saving: boolean;
   onGeneratePDF: (kind: 'client' | 'internal') => void;
@@ -1612,9 +1653,21 @@ function ProposalStep({
   onUpdateProfessional: (id: string, p: Partial<DraftItemOverride>) => void;
   onRestoreProfessional: (id: string) => void;
   onRemoveProfessional: (id: string) => void;
+  priceList: PriceListItem[];
+  selectedServices: Record<string, DraftItemOverride>;
+  selectedEquipment: Record<string, DraftItemOverride>;
+  selectedProfessionals: Record<string, DraftItemOverride>;
+  onServiceClick: (price: PriceListItem) => void;
+  onEquipmentClick: (price: PriceListItem) => void;
+  onProfessionalClick: (price: PriceListItem) => void;
+  onAddCustomService: () => void;
+  onAddCustomEquipment: () => void;
+  onAddCustomProfessional: () => void;
 }) {
   const hasAnyItem =
     servicesList.length + reelsList.length + equipmentList.length + professionalsList.length > 0;
+  const [showAddPanel, setShowAddPanel] = useState(false);
+  const [addTab, setAddTab] = useState<'services' | 'equipment' | 'professionals'>('services');
 
   return (
     <StepPanel title={t.steps.proposal} subtitle="Revise, edite ou remova qualquer item antes de gerar o PDF.">
@@ -1637,6 +1690,61 @@ function ProposalStep({
           <FinMetric label={`Fee (${t.fee})`} value={financials.fee_value} />
           <FinMetric label={`Impostos (${t.tax})`} value={financials.tax_value} />
         </div>
+      </div>
+
+      {/* ADICIONAR ITENS — sem sair desta etapa */}
+      <div className="sm:col-span-2">
+        <button
+          onClick={() => setShowAddPanel((v) => !v)}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-white/20 bg-white/[0.02] py-4 text-sm font-medium text-white/60 transition hover:border-accent/40 hover:bg-accent/[0.05] hover:text-white"
+        >
+          <Plus size={16} /> {showAddPanel ? 'Fechar' : 'Adicionar mais itens'}
+        </button>
+        {showAddPanel && (
+          <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+            <div className="mb-5 flex flex-wrap gap-2">
+              <TabChip label="Serviços" active={addTab === 'services'} onClick={() => setAddTab('services')} />
+              <TabChip label="Equipamentos" active={addTab === 'equipment'} onClick={() => setAddTab('equipment')} />
+              <TabChip label="Equipe" active={addTab === 'professionals'} onClick={() => setAddTab('professionals')} />
+            </div>
+            {addTab === 'services' && (
+              <SelectStep
+                title="Serviços"
+                subtitle="Clique para adicionar."
+                categories={SELECTABLE_CATEGORIES}
+                priceList={priceList}
+                selected={selectedServices}
+                onToggle={onServiceClick}
+                onEdit={onServiceClick}
+                onAddCustom={onAddCustomService}
+              />
+            )}
+            {addTab === 'equipment' && (
+              <SelectStep
+                title="Equipamentos"
+                subtitle="Clique para adicionar."
+                categories={['Equipamentos']}
+                priceList={priceList}
+                selected={selectedEquipment}
+                onToggle={onEquipmentClick}
+                onEdit={onEquipmentClick}
+                onAddCustom={onAddCustomEquipment}
+              />
+            )}
+            {addTab === 'professionals' && (
+              <SelectStep
+                title="Equipe"
+                subtitle="Clique para adicionar."
+                categories={['Equipe']}
+                priceList={priceList}
+                selected={selectedProfessionals}
+                onToggle={onProfessionalClick}
+                onEdit={onProfessionalClick}
+                onAddCustom={onAddCustomProfessional}
+              />
+            )}
+          </div>
+        )}
       </div>
 
       {/* ITENS — editáveis e removíveis, sem sair desta etapa */}
@@ -1695,19 +1803,23 @@ function ProposalStep({
       )}
 
       {/* AÇÕES FINAIS — só aqui o orçamento é fechado e salvo no histórico */}
-      <Action
-        label={saving ? 'Gerando PDF...' : 'Gerar PDF do Cliente'}
-        onClick={() => onGeneratePDF('client')}
-        primary
-        icon={Sparkles}
-        disabled={saving}
-      />
-      <Action
-        label={saving ? 'Gerando PDF...' : 'Gerar PDF Interno'}
-        onClick={() => onGeneratePDF('internal')}
-        icon={Link2}
-        disabled={saving}
-      />
+      <div className="sm:col-span-2">
+        <Action
+          label={saving ? 'Gerando PDF...' : 'Gerar PDF do Cliente'}
+          onClick={() => onGeneratePDF('client')}
+          primary
+          icon={Sparkles}
+          disabled={saving}
+        />
+      </div>
+      <div className="sm:col-span-2">
+        <Action
+          label={saving ? 'Gerando PDF...' : 'Gerar PDF Interno'}
+          onClick={() => onGeneratePDF('internal')}
+          icon={Link2}
+          disabled={saving}
+        />
+      </div>
     </StepPanel>
   );
 }
@@ -1834,6 +1946,19 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
   );
 }
 
+function TabChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`whitespace-nowrap rounded-xl px-3 py-2 text-xs font-medium transition ${
+        active ? 'bg-white text-black' : 'bg-white/5 text-white/45 hover:text-white'
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
 function FinMetric({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
@@ -1852,7 +1977,7 @@ function Action({ label, onClick, primary, icon: Icon = Save, disabled }: {
         primary ? 'border-white bg-white text-black' : 'border-white/10 bg-white/[0.03] text-white hover:border-white/25'
       }`}>
       <Icon size={18} className="shrink-0" />
-      <span className="min-w-0 flex-1 truncate text-sm font-medium">{label}</span>
+      <span className="min-w-0 flex-1 break-words text-sm font-medium">{label}</span>
     </button>
   );
 }

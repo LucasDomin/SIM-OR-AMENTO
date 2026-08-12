@@ -21,7 +21,7 @@ export function Login() {
     setLoading(true);
     const { error } = await signIn(email, password);
     if (error) {
-      setError(error === 'Credenciais inválidas' ? t.invalidCredentials : error);
+      setError(error.toLowerCase().includes('credentials') ? t.invalidCredentials : error);
       setLoading(false);
       return;
     }

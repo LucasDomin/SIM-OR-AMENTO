@@ -14,7 +14,7 @@ import {
 import { Layout } from '../components/Layout';
 import { StatCard } from '../components/StatCard';
 import { BudgetStatusBadge } from '../components/BudgetStatusBadge';
-import { supabase } from '../lib/supabase';
+import { mapBudgetRow, supabase } from '../lib/supabase';
 import { formatCurrency, formatDate } from '../lib/utils';
 import { t } from '../lib/i18n';
 import type { Budget, DashboardStats } from '../types';
@@ -35,8 +35,8 @@ export function Dashboard() {
   }, []);
 
   async function loadData() {
-    const result = await supabase.from('budgets').select().order('created_at', { ascending: false }).data();
-    const budgetList = (result.data || []) as Budget[];
+    const result = await supabase.from('budgets').select().order('created_at', { ascending: false });
+    const budgetList = (result.data || []).map(mapBudgetRow);
     setBudgets(budgetList);
 
     const approved = budgetList.filter((b: Budget) => b.status === 'Approved');
