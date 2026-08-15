@@ -185,7 +185,7 @@ export function BudgetDetail() {
         {/* TOTAL GERAL - destaque máximo */}
         <div className="rounded-3xl border border-accent/30 bg-accent/[0.08] p-8">
           <p className="mb-2 text-xs uppercase tracking-[0.22em] text-accent">{t.finalPriceLabel}</p>
-          <p className="font-display text-5xl text-white md:text-7xl">
+          <p className="break-words [overflow-wrap:anywhere] font-display text-3xl text-white sm:text-4xl md:text-6xl lg:text-7xl">
             {formatCurrency(budget.final_price)}
           </p>
           <div className="mt-6 grid gap-4 sm:grid-cols-3">

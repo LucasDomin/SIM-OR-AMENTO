@@ -11,6 +11,7 @@ import {
   Plus,
   RotateCcw,
   Save,
+  Search,
   SlidersHorizontal,
   Sparkles,
   Trash2,
@@ -753,7 +754,7 @@ export function BudgetCreate() {
           </div>
         </motion.div>
 
-        <div className="grid gap-8 lg:grid-cols-[260px_1fr_340px]">
+        <div className="grid gap-8 lg:grid-cols-[260px_minmax(0,1fr)_340px]">
           {/* Sidebar de etapas */}
           <aside className="space-y-2 lg:sticky lg:top-8 lg:h-fit">
             {STEPS.map((label, index) => {
@@ -778,7 +779,7 @@ export function BudgetCreate() {
           </aside>
 
           {/* Conteúdo principal */}
-          <main className="min-h-[620px]">
+          <main className="min-w-0 min-h-[620px]">
             <AnimatePresence mode="wait">
 
               {/* STEP 1 — CLIENTE */}
@@ -1009,7 +1010,7 @@ export function BudgetCreate() {
           </main>
 
           {/* Preview lateral */}
-          <aside className="lg:sticky lg:top-8 lg:h-fit">
+          <aside className="min-w-0 lg:sticky lg:top-8 lg:h-fit">
             <LivePreview
               servicesList={servicesList}
               reelsList={reelsList}
@@ -1035,16 +1036,22 @@ export function BudgetCreate() {
       {newItemModal && (
         <NewCustomItemModal
           group={newItemModal.group}
+          priceList={priceList}
           onConfirm={confirmNewItem}
+          onSelectExisting={(price) => {
+            setNewItemModal(null);
+            if (newItemModal.group === 'services') handleServiceClick(price);
+            else openItemModal(price, newItemModal.group);
+          }}
           onCancel={() => setNewItemModal(null)}
         />
       )}
 
       {/* Modal de variante (Edição Reel vs Wide) */}
       {variantModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setVariantModal(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setVariantModal(null)}>
           <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#131315] p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            className="max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-3xl border border-white/10 bg-[#131315] p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-6 flex items-center justify-between">
               <h3 className="font-display text-xl text-white">Selecionar formato</h3>
               <button onClick={() => setVariantModal(null)} className="rounded-lg p-2 text-white/40 hover:bg-white/10 hover:text-white"><X size={18} /></button>
@@ -1072,9 +1079,9 @@ export function BudgetCreate() {
 
       {/* Modal de confirmação para limpar orçamento */}
       {showClearConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-sm rounded-3xl border border-red-500/20 bg-[#131315] p-6 shadow-2xl">
+            className="max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-3xl border border-red-500/20 bg-[#131315] p-6 shadow-2xl">
             <h3 className="font-display text-xl text-white mb-3">Limpar orçamento?</h3>
             <p className="text-sm text-white/50 mb-6">Todos os dados deste orçamento serão apagados permanentemente. Esta ação não pode ser desfeita.</p>
             <div className="flex gap-3">
@@ -1118,11 +1125,11 @@ function ItemConfigModal({
   const qtyLabel = isEquipOrPro ? 'Diárias / Dias' : 'Quantidade';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onCancel}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onCancel}>
       <motion.div
         initial={{ opacity: 0, y: 20, scale: 0.96 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
-        className="w-full max-w-md rounded-3xl border border-white/10 bg-[#131315] p-7 shadow-2xl"
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl border border-white/10 bg-[#131315] p-7 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -1218,10 +1225,13 @@ const CATEGORY_BY_GROUP: Record<'services' | 'equipment' | 'professionals', Serv
 
 function NewCustomItemModal({
   group,
+  priceList,
   onConfirm,
+  onSelectExisting,
   onCancel,
 }: {
   group: 'services' | 'equipment' | 'professionals';
+  priceList: PriceListItem[];
   onConfirm: (data: {
     name: string;
     category: ServiceCategory;
@@ -1230,6 +1240,7 @@ function NewCustomItemModal({
     qty: number;
     addToGlobal: boolean;
   }) => void;
+  onSelectExisting: (price: PriceListItem) => void;
   onCancel: () => void;
 }) {
   const fixedCategory = CATEGORY_BY_GROUP[group];
@@ -1239,17 +1250,30 @@ function NewCustomItemModal({
   const [priceBase, setPriceBase] = useState(0);
   const [qty, setQty] = useState(1);
   const [addToGlobal, setAddToGlobal] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const isEquipOrPro = group === 'equipment' || group === 'professionals';
   const qtyLabel = isEquipOrPro ? 'Diárias / Dias' : 'Quantidade';
   const canConfirm = name.trim().length > 0;
+
+  // ── Sugestões: itens já cadastrados na tabela de preços que casam com o
+  // que está sendo digitado, restritos às categorias válidas para este grupo.
+  const candidatePool = useMemo(
+    () => priceList.filter((p) => (fixedCategory ? p.category === fixedCategory : (SELECTABLE_CATEGORIES as string[]).includes(p.category))),
+    [priceList, fixedCategory],
+  );
+  const query = name.trim().toLowerCase();
+  const suggestions = useMemo(
+    () => (query.length === 0 ? [] : candidatePool.filter((p) => p.name.toLowerCase().includes(query)).slice(0, 6)),
+    [candidatePool, query],
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onCancel}>
       <motion.div
         initial={{ opacity: 0, y: 20, scale: 0.96 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
-        className="w-full max-w-md rounded-3xl border border-white/10 bg-[#131315] p-7 shadow-2xl"
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl border border-white/10 bg-[#131315] p-7 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-6 flex items-start justify-between gap-4">
@@ -1262,15 +1286,41 @@ function NewCustomItemModal({
         </div>
 
         <div className="space-y-4">
-          <label className="block">
+          <label className="relative block">
             <span className="mb-1.5 block text-xs uppercase tracking-[0.22em] text-white/35">Nome do item</span>
-            <input
-              autoFocus
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ex.: Aluguel de estúdio"
-              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white focus:border-white/35"
-            />
+            <div className="relative">
+              <Search size={14} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/25" />
+              <input
+                autoFocus
+                value={name}
+                onChange={(e) => { setName(e.target.value); setShowSuggestions(true); }}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 120)}
+                placeholder="Ex.: Aluguel de estúdio"
+                autoComplete="off"
+                className="w-full rounded-xl border border-white/10 bg-black/30 py-2.5 pl-9 pr-4 text-sm text-white focus:border-white/35"
+              />
+            </div>
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute left-0 right-0 top-full z-10 mt-1.5 max-h-56 overflow-y-auto rounded-xl border border-white/10 bg-[#1a1a1c] shadow-2xl">
+                <p className="px-3 pb-1 pt-2 text-[10px] uppercase tracking-[0.22em] text-white/25">Já cadastrados na tabela de preços</p>
+                {suggestions.map((price) => (
+                  <button
+                    key={price.id}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => onSelectExisting(price)}
+                    className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition hover:bg-white/[0.06]"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium text-white">{price.name}</span>
+                      {!fixedCategory && <span className="block truncate text-xs text-white/35">{price.category}</span>}
+                    </span>
+                    <span className="shrink-0 text-sm font-display text-accent">{formatCurrency(price.sale_price)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </label>
 
           {!fixedCategory && (
@@ -1640,7 +1690,7 @@ function EditableItemTable({
   qtyLabel: string;
 }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-white/10">
+    <div className="overflow-x-auto rounded-2xl border border-white/10">
       <div className="flex items-center justify-between border-b border-white/10 bg-white/[0.03] px-5 py-3">
         <h4 className="min-w-0 truncate text-sm font-semibold text-white">{title}</h4>
         <p className="shrink-0 text-xs text-white/30">{items.length} {items.length === 1 ? 'item' : 'itens'}</p>

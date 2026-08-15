@@ -305,7 +305,7 @@ function PriceRow({
   return (
     <div
       id={`price-row-${item.id}`}
-      className={`grid gap-3 overflow-hidden rounded-2xl border p-4 transition-colors duration-700 2xl:grid-cols-[minmax(0,1.1fr)_110px_110px_90px_90px_130px] 2xl:items-center ${
+      className={`grid gap-3 overflow-x-auto rounded-2xl border p-4 transition-colors duration-700 2xl:grid-cols-[minmax(0,1.1fr)_110px_110px_90px_90px_130px] 2xl:items-center ${
         highlighted ? 'border-accent bg-accent/10' : 'border-white/10 bg-black/25'
       }`}
     >

@@ -142,7 +142,7 @@ export function Budgets() {
                 transition={{ delay: 0.05 * index }}
                 className="group rounded-xl border border-sim-border bg-sim-surface p-5 transition-all duration-200 hover:border-white/10"
               >
-                <div className="flex items-start gap-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
                   <button
                     onClick={() => navigate(`/budgets/${budget.id}`)}
                     className="min-w-0 flex-1 text-left"
@@ -166,8 +166,8 @@ export function Budgets() {
                         <span className="shrink-0">Expira em {formatDate(budget.expires_at || budget.expiration_date || budget.created_at)}</span>
                     </div>
                   </button>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <div className="hidden text-right sm:block">
+                  <div className="flex shrink-0 items-center justify-between gap-2 sm:justify-end">
+                    <div className="text-left sm:text-right">
                       <p className="text-sm font-semibold text-white">
                         {formatCurrency(budget.final_price)}
                       </p>

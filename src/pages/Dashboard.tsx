@@ -178,7 +178,7 @@ export function Dashboard() {
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.1 * index }}
                   onClick={() => navigate(`/budgets/${budget.id}`)}
-                  className="w-full flex items-center gap-4 p-4 bg-sim-surface border border-sim-border rounded-xl hover:border-white/10 transition-all duration-200 text-left group"
+                  className="w-full flex flex-col gap-3 p-4 bg-sim-surface border border-sim-border rounded-xl hover:border-white/10 transition-all duration-200 text-left group sm:flex-row sm:items-center sm:gap-4"
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3 mb-1">
@@ -191,13 +191,15 @@ export function Dashboard() {
                       {budget.client_name} — {budget.client_company}
                     </p>
                   </div>
-                  <div className="text-right hidden sm:block">
-                    <p className="text-sm font-medium text-white">
-                      {formatCurrency(budget.final_price)}
-                    </p>
-                    <p className="text-xs text-white/30">{formatDate(budget.created_at)}</p>
+                  <div className="flex items-center justify-between gap-3 sm:shrink-0 sm:gap-4">
+                    <div className="text-left sm:text-right">
+                      <p className="text-sm font-medium text-white">
+                        {formatCurrency(budget.final_price)}
+                      </p>
+                      <p className="text-xs text-white/30">{formatDate(budget.created_at)}</p>
+                    </div>
+                    <ArrowRight size={16} className="text-white/20 group-hover:text-white/50 transition-colors shrink-0" />
                   </div>
-                  <ArrowRight size={16} className="text-white/20 group-hover:text-white/50 transition-colors shrink-0" />
                 </motion.button>
               ))}
             </div>

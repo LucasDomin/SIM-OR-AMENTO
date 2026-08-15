@@ -111,7 +111,9 @@ export function ProposalPublic() {
         <Section title={t.investment}>
           <div className="rounded-2xl bg-noir-900 p-8 text-white md:p-12">
             <p className="text-xs uppercase tracking-[0.3em] text-accent">{t.finalPriceLabel}</p>
-            <p className="mt-4 truncate font-display text-5xl md:text-7xl">{formatCurrency(budget.final_price)}</p>
+            <p className="mt-4 break-words [overflow-wrap:anywhere] font-display text-3xl sm:text-4xl md:text-6xl lg:text-7xl">
+              {formatCurrency(budget.final_price)}
+            </p>
             <div className="mt-8 flex h-1.5 w-full overflow-hidden rounded-full bg-white/10">
               {SEGMENTS.map((c) => (
                 <div key={c} className="h-full flex-1" style={{ backgroundColor: c }} />
